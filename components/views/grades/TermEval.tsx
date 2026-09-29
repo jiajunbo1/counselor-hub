@@ -1,0 +1,291 @@
+import { useMemo, useState } from "react";
+import { FileUp, Save, Settings2, Search, X } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import ImportDialog from "@/components/ImportDialog";
+import { Input } from "@/components/ui/input";
+import { EmptyHint, Select } from "@/components/form";
+import type { Store } from "@/hooks/use-store";
+import { TERM_EVAL_COLUMNS, exportCsv } from "@/lib/import-export";
+import { round1, termAttendDeduct } from "@/lib/evaluation";
+import { ALL, SCORE_RE, SegPills, evalFormulaNote, fmt1, HOT_CLASS } from "./parts";
+import { RulesDialog } from "./Attendance";
+import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
+
+interface Draft {
+  usual_score: string;
+  note: string;
+}
+
+const clamp01 = (n: number) => Math.max(0, Math.min(100, Math.round(n * 10) / 10));
+
+export default function TermEvalView({ store, goto, focusNo, focusTerm }: { store: Store; goto: GotoFn; focusNo?: string; focusTerm?: string }) {
+  const terms = useMemo(
+    () => [...new Set([...store.grades.map((g) => g.term), ...store.termEvals.map((e) => e.term)].filter(Boolean))].sort(),
+    [store.grades, store.termEvals]
+  );
+  const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
+  const [term, setTerm] = useState<string | null>(focusTerm ?? null);
+  const [cls, setCls] = useState(ALL);
+  const [keyword, setKeyword] = useState(focusNo ?? "");
+  const [scope, setScope] = useState(ALL);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [importing, setImporting] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const activeTerm = term ?? defaultTerm;
+  const [detail, setDetail] = useState<ScoreDetail | null>(null);
+  const termOptions = useMemo(() => {
+    const list = focusTerm && !terms.includes(focusTerm) ? [...terms, focusTerm].sort() : terms;
+    return list.map((t) => ({ value: t, label: t }));
+  }, [terms, focusTerm]);
+  const classOptions = useMemo(
+    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.students.map((s) => s.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
+    [store.students]
+  );
+  const evalByStudent = useMemo(
+    () => new Map(store.termEvals.filter((e) => e.term === activeTerm).map((e) => [e.student_id, e])),
+    [store.termEvals, activeTerm]
+  );
+
+  const valueOf = (studentId: string, field: keyof Draft): string =>
+    drafts[studentId]?.[field] ?? evalByStudent.get(studentId)?.[field] ?? "";
+
+  const rows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return store.students
+      .filter((s) => cls === ALL || s.class_name === cls)
+      .filter((s) => !kw || `${s.name}${s.student_no}`.toLowerCase().includes(kw))
+      .map((s) => {
+        const { counts, deduct } = termAttendDeduct(s.id, activeTerm, store.attendance, store.evaluation);
+        const saved = evalByStudent.get(s.id) ?? null;
+        const draft = drafts[s.id];
+        const raw = draft ? draft.usual_score : saved?.usual_score ?? "";
+        const usualNum = raw !== "" && SCORE_RE.test(raw) ? Number(raw) : null;
+        const usualEff = usualNum === null ? null : clamp01(usualNum - deduct);
+        return { student: s, saved, counts, deduct, raw, usualEff, dirty: !!draft && (draft.usual_score !== (saved?.usual_score ?? "") || draft.note !== (saved?.note ?? "")) };
+      })
+      .filter((r) => (scope === "done" ? r.saved !== null : scope === "todo" ? r.saved === null : true))
+      .sort((a, b) => a.student.class_name.localeCompare(b.student.class_name, "zh") || a.student.student_no.localeCompare(b.student.student_no));
+  }, [store.students, store.attendance, store.evaluation, cls, keyword, scope, activeTerm, evalByStudent, drafts]);
+
+  const dirtyCount = rows.filter((r) => r.dirty).length;
+  const doneCount = useMemo(() => store.students.filter((s) => evalByStudent.has(s.id)).length, [store.students, evalByStudent]);
+
+  const saveOne = async (studentId: string): Promise<boolean> => {
+    const draft = drafts[studentId];
+    if (!draft) return true;
+    if (!SCORE_RE.test(draft.usual_score) || Number(draft.usual_score) > 100) {
+      toast.error("平时总评需为 0-100。");
+      return false;
+    }
+    return await store.write("term_eval.save", { student_id: studentId, term: activeTerm, usual_score: draft.usual_score, note: draft.note.trim() });
+  };
+
+  const saveAll = async () => {
+    setBusy(true);
+    let okCount = 0;
+    let failed = 0;
+    for (const r of rows) {
+      if (!r.dirty) continue;
+      const ok = await saveOne(r.student.id);
+      if (ok) okCount += 1;
+      else {
+        failed += 1;
+        break;
+      }
+    }
+    setBusy(false);
+    if (failed === 0 && okCount > 0) toast.success(`已保存 ${okCount} 名学生的学期平时总评。`);
+    setDrafts({});
+  };
+
+  const exportTerm = () => {
+    if (rows.length === 0) return toast.error("当前范围内没有学生。");
+    exportCsv(
+      `学期综合测评-${activeTerm}-${cls === ALL ? "全部班级" : cls}.csv`,
+      ["学号", "姓名", "班级", "平时总评（原始）", "考勤扣分", "折算平时", "旷课", "迟到", "早退", "请假", "备注"],
+      rows.map((r) => [
+        r.student.student_no, r.student.name, r.student.class_name,
+        r.raw === "" ? "未录入" : r.raw,
+        String(r.deduct),
+        r.usualEff === null ? "" : String(r.usualEff),
+        String(r.counts.absent), String(r.counts.late), String(r.counts.early), String(r.counts.leave),
+        drafts[r.student.id]?.note ?? r.saved?.note ?? "",
+      ])
+    );
+    toast.success("测评表已开始下载。");
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-64">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索姓名 / 学号" maxLength={30} className="pl-8 pr-7" />
+          {keyword ? (
+            <button type="button" aria-label="清空搜索" onClick={() => setKeyword("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+          ) : null}
+        </div>
+        <div className="w-32 sm:w-40">
+          <Select value={cls} onValueChange={setCls} options={classOptions} />
+        </div>
+        <div className="w-36 sm:w-44">
+          <Select value={activeTerm} onValueChange={setTerm} options={termOptions.length ? termOptions : [{ value: "", label: "暂无学期" }]} />
+        </div>
+        <div className="ml-auto flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowRules(true)}>
+            <Settings2 className="size-4" /> <span className="hidden sm:inline">规则设置</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportTerm}>
+            导出
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+            <FileUp className="size-4" /> <span className="hidden sm:inline">导入</span>
+          </Button>
+          <Button size="sm" onClick={() => void saveAll()} disabled={busy || dirtyCount === 0}>
+            <Save className="size-4" /> {busy ? "保存中…" : dirtyCount ? `保存全部（${dirtyCount}）` : "保存全部"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="w-full sm:w-80">
+          <SegPills
+            options={[
+              { value: ALL, label: "全部", count: store.students.length },
+              { value: "done", label: "已录入", count: doneCount },
+              { value: "todo", label: "未录入", count: store.students.length - doneCount },
+            ]}
+            value={scope}
+            onChange={setScope}
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">{activeTerm || "暂无学期"} · 录入的是扣分前的原始分，考勤扣分自动折算；点「折算后」看明细</span>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyHint text={store.students.length === 0 ? "还没有学生档案，请先在「学生」页导入名单。" : "没有符合条件的学生。"} />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-muted/40 text-left text-[11px] text-muted-foreground">
+                <th className="sticky left-0 z-10 bg-card px-3 py-2 font-medium">姓名 / 学号</th>
+                <th className="px-2 py-2 text-left font-medium">班级</th>
+                <th className="px-2 py-2 text-center font-medium">考勤（旷/迟/早/假）</th>
+                <th className="px-2 py-2 text-center font-medium">扣分</th>
+                <th className="px-2 py-2 text-center font-medium">平时总评</th>
+                <th className="px-2 py-2 text-center font-medium">折算后</th>
+                <th className="hidden px-2 py-2 text-left font-medium lg:table-cell">备注</th>
+                <th className="px-2 py-2 text-center font-medium">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.student.id} className="border-t">
+                  <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+                    <span className="font-medium">{r.student.name}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
+                  </td>
+                  <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.student.class_name || "未分班"}</td>
+                  <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
+                    {r.counts.absent || r.counts.late || r.counts.early || r.counts.leave
+                      ? `${r.counts.absent}/${r.counts.late}/${r.counts.early}/${r.counts.leave}`
+                      : "满勤"}
+                  </td>
+                  <td className="px-2 py-1.5 text-center text-xs tabular-nums">
+                    {r.deduct > 0 ? <span className="font-semibold text-amber-600">-{fmt1(r.deduct)}</span> : <span className="text-muted-foreground">0</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <Input
+                      value={valueOf(r.student.id, "usual_score")}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: e.target.value.replace(/[^\d.]/g, ""), note: d[r.student.id]?.note ?? r.saved?.note ?? "" } }))}
+                      placeholder="0-100"
+                      inputMode="decimal"
+                      maxLength={5}
+                      className="mx-auto w-20 text-center"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center text-sm font-semibold tabular-nums">
+                    {r.usualEff === null ? (
+                      <span className="text-xs font-normal text-amber-600">未录入</span>
+                    ) : (
+                      <button type="button" className={"rounded px-1 underline decoration-dotted decoration-from-font underline-offset-4 " + HOT_CLASS} onClick={() => setDetail({ kind: "term", student: r.student, term: activeTerm })}>
+                        {round1(r.usualEff)}
+                      </button>
+                    )}
+                  </td>
+                  <td className="hidden px-2 py-1.5 lg:table-cell">
+                    <Input
+                      value={valueOf(r.student.id, "note")}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: d[r.student.id]?.usual_score ?? r.saved?.usual_score ?? "", note: e.target.value } }))}
+                      placeholder="选填"
+                      maxLength={200}
+                      className="w-full min-w-24"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    {r.dirty ? (
+                      <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => void saveOne(r.student.id).then((ok) => ok && setDrafts((d) => { const n = { ...d }; delete n[r.student.id]; return n; }))}>
+                        保存
+                      </Button>
+                    ) : r.saved ? (
+                      <Badge variant="outline" className="border-transparent bg-emerald-500/10 font-normal text-emerald-700">已录</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-transparent bg-muted font-normal text-muted-foreground">未录</Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="px-1 text-[11px] text-muted-foreground">{evalFormulaNote(store.evaluation)}</p>
+
+      {importing ? (
+        <ImportDialog
+          title="导入学期平时总评"
+          description="按学号匹配学生；同一学生同一学期已有总评会被覆盖更新。分数需为 0-100（扣分前的原始分）。"
+          columns={TERM_EVAL_COLUMNS}
+          action="term_eval.bulk_create"
+          chunkSize={150}
+          template={{ name: "学期总评导入模板", samples: ["2024010101", "2025-2026-2", "92", "担任课代表"] }}
+          buildRow={(row) => ({
+            student_no: row.student_no ?? "",
+            term: row.term ?? "",
+            usual_score: row.usual_score ?? "",
+            note: row.note ?? "",
+          })}
+          extraValidate={(row) => {
+            if (row.usual_score && (!SCORE_RE.test(row.usual_score) || Number(row.usual_score) > 100)) return "分数需为 0-100";
+            if (!row.term) return "学期必填";
+            return null;
+          }}
+          onClose={() => setImporting(false)}
+          onDone={(created, skipped) => {
+            void store.refresh();
+            toast.success(`导入完成：写入 ${created} 条${skipped ? `，跳过 ${skipped} 条` : ""}`);
+          }}
+        />
+      ) : null}
+
+      {showRules ? <RulesDialog store={store} onClose={() => setShowRules(false)} /> : null}
+
+      {detail ? (
+        <ScoreDetailDialog
+          key={detail.kind === "grade" ? "g" + detail.grade.id : "t" + detail.student.id + "|" + detail.term}
+          store={store}
+          detail={detail}
+          goto={goto}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
+    </div>
+  );
+}

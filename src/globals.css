@@ -1,0 +1,526 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind-4.13.0.css";
+
+/* 手动/系统切换深色：由 <html class="dark"> 驱动所有 dark: 工具类 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+/* 品牌渐变文本 */
+@utility text-gradient {
+  background-image: var(--grad-brand);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+:root {
+  color-scheme: light;
+
+  --background: #f4f6fb;
+  --foreground: #141a2e;
+  --card: #ffffff;
+  --card-foreground: #141a2e;
+  --popover: #ffffff;
+  --popover-foreground: #141a2e;
+  --primary: #5b5bd6;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f7;
+  --secondary-foreground: #141a2e;
+  --muted: #eef1f7;
+  --muted-foreground: #5b6480;
+  --accent: #ecebfe;
+  --accent-foreground: #5b5bd6;
+  --destructive: #e5484d;
+  --border: #e4e8f0;
+  --input: #dfe4ee;
+  --ring: #8b8bf0;
+
+  --chart-1: #6366f1;
+  --chart-2: #06b6d4;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ef4444;
+
+  --radius: 0.75rem;
+
+  --sidebar: #f7f8fc;
+  --sidebar-foreground: #141a2e;
+  --sidebar-primary: #5b5bd6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ecebfe;
+  --sidebar-accent-foreground: #5b5bd6;
+  --sidebar-border: #e4e8f0;
+  --sidebar-ring: #8b8bf0;
+
+  /* 品牌渐变与光晕 */
+  --brand-1: #6366f1;
+  --brand-2: #8b5cf6;
+  --brand-3: #06b6d4;
+  --grad-brand: linear-gradient(120deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
+  --grad-primary: linear-gradient(135deg, var(--brand-1), var(--brand-2));
+  --shadow-glow: 0 10px 30px -12px color-mix(in oklab, var(--brand-2) 45%, transparent);
+  --shadow-card: 0 1px 2px rgba(20, 26, 46, 0.04), 0 12px 32px -18px rgba(20, 26, 46, 0.22);
+
+  /* 表面玻璃参数（皮肤覆盖） */
+  --surface-alpha: 1;
+  --surface-blur: 0px;
+  --surface-sheen: transparent;
+  --surface-edge: transparent;
+  --glow-opacity: 0.5;
+
+  /* 状态色（皮肤/明暗覆盖） */
+  --success: #16a34a;
+  --success-fg: #15803d;
+  --warning: #d97706;
+  --warning-fg: #b45309;
+  --info: #2563eb;
+  --info-fg: #1d4ed8;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0b1020;
+  --foreground: #e7ebf5;
+  --card: #141b30;
+  --card-foreground: #e7ebf5;
+  --popover: #131a2d;
+  --popover-foreground: #e7ebf5;
+  --primary: #8b8bf0;
+  --primary-foreground: #0b1020;
+  --secondary: #1b2340;
+  --secondary-foreground: #e7ebf5;
+  --muted: #1b2340;
+  --muted-foreground: #9aa4c0;
+  --accent: #232b4a;
+  --accent-foreground: #c7c9ff;
+  --destructive: #f2555a;
+  --border: #262f4d;
+  --input: #2b3454;
+  --ring: #6366f1;
+
+  --chart-1: #818cf8;
+  --chart-2: #22d3ee;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f87171;
+
+  --sidebar: #0e1428;
+  --sidebar-foreground: #e7ebf5;
+  --sidebar-primary: #8b8bf0;
+  --sidebar-primary-foreground: #0b1020;
+  --sidebar-accent: #232b4a;
+  --sidebar-accent-foreground: #c7c9ff;
+  --sidebar-border: #262f4d;
+  --sidebar-ring: #6366f1;
+
+  --brand-1: #818cf8;
+  --brand-2: #a78bfa;
+  --brand-3: #22d3ee;
+  --shadow-glow: 0 12px 40px -14px color-mix(in oklab, var(--brand-2) 60%, transparent);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 40px -22px rgba(0, 0, 0, 0.7);
+
+  --glow-opacity: 0.7;
+
+  --success: #4ade80;
+  --success-fg: #86efac;
+  --warning: #fbbf24;
+  --warning-fg: #fcd34d;
+  --info: #60a5fa;
+  --info-fg: #93c5fd;
+}
+
+/* —— 皮肤：深色科技·霓虹 —— */
+/* 皮肤只决定配色与质感，不决定明暗；明暗统一由 .dark 控制 */
+
+/* —— 皮肤：霓虹炫彩（浅/深皆可，不再强制深色） —— */
+html[data-skin="neon"] {
+  --brand-1: #0891b2;
+  --brand-2: #7c3aed;
+  --brand-3: #db2777;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --ring: #a855f7;
+  --accent: #f0ecff;
+  --accent-foreground: #7c3aed;
+  --background: #f2f1fb;
+  --glow-opacity: 0.6;
+  --shadow-glow: 0 10px 34px -12px color-mix(in oklab, var(--brand-2) 55%, transparent);
+  --chart-1: #0891b2;
+  --chart-2: #7c3aed;
+  --chart-3: #db2777;
+  --chart-4: #f59e0b;
+  --chart-5: #06b6d4;
+}
+html.dark[data-skin="neon"] {
+  --brand-1: #22d3ee;
+  --brand-2: #a78bfa;
+  --brand-3: #f472b6;
+  --primary: #22d3ee;
+  --primary-foreground: #04222b;
+  --ring: #38bdf8;
+  --background: #070a16;
+  --card: #0e1428;
+  --popover: #0d1326;
+  --foreground: #eaf0ff;
+  --secondary: #131b34;
+  --muted: #131b34;
+  --muted-foreground: #8b96b8;
+  --accent: #14213f;
+  --accent-foreground: #7dd3fc;
+  --border: #1d2a4d;
+  --input: #1f2c50;
+  --glow-opacity: 0.95;
+  --shadow-glow: 0 0 0 1px color-mix(in oklab, var(--brand-1) 35%, transparent),
+    0 14px 44px -12px color-mix(in oklab, var(--brand-2) 70%, transparent);
+}
+
+/* —— 皮肤：磨砂玻璃 —— 哑光雾面：中等透明 + 明显模糊，下方内容被晕成柔和光斑、看不清 → 看起来“厚实磨砂” */
+html[data-skin="glass"] {
+  --surface-alpha: 0.7;
+  --surface-blur: 22px;
+  --surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 40%);
+  --surface-edge: rgba(255, 255, 255, 0.45);
+  --glow-opacity: 0.8;
+}
+html.dark[data-skin="glass"] {
+  --surface-alpha: 0.68;
+  --surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 40%);
+  --surface-edge: rgba(255, 255, 255, 0.12);
+  --glow-opacity: 0.85;
+}
+
+/* —— 皮肤：液态玻璃 —— 清澈湿润：极低透明 + 很轻的模糊，能看穿下方内容与高光 → 看起来“最通透” */
+html[data-skin="liquid"] {
+  --surface-alpha: 0.14;
+  --surface-blur: 6px;
+  --radius: 1.75rem;
+  --surface-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.06) 32%, rgba(255, 255, 255, 0) 56%),
+    radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--brand-1) 26%, transparent), transparent 60%);
+  --surface-edge: rgba(255, 255, 255, 0.95);
+  --shadow-card: inset 0 1.5px 0 rgba(255, 255, 255, 0.85), 0 30px 80px -22px rgba(20, 26, 46, 0.5);
+  --glow-opacity: 1;
+}
+html.dark[data-skin="liquid"] {
+  --surface-alpha: 0.12;
+  --surface-blur: 6px;
+  --surface-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.03) 34%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(120% 80% at 0% 0%, color-mix(in oklab, var(--brand-1) 30%, transparent), transparent 60%);
+  --surface-edge: rgba(255, 255, 255, 0.32);
+  --shadow-card: inset 0 1.5px 0 rgba(255, 255, 255, 0.22), 0 36px 90px -24px rgba(0, 0, 0, 0.95);
+  --glow-opacity: 1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  position: relative;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 背景光晕装饰（皮肤决定强度） */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--glow-opacity);
+  background:
+    radial-gradient(48rem 48rem at 8% -10%, color-mix(in oklab, var(--brand-1) 30%, transparent), transparent 60%),
+    radial-gradient(40rem 40rem at 100% 0%, color-mix(in oklab, var(--brand-3) 26%, transparent), transparent 55%),
+    radial-gradient(46rem 46rem at 60% 110%, color-mix(in oklab, var(--brand-2) 24%, transparent), transparent 60%);
+  transition: opacity 0.3s ease;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 26%, transparent);
+}
+
+/* 卡片：玻璃/描边/抬升，由令牌统一驱动，无需改各视图 */
+[data-slot="card"] {
+  background: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.7);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.7);
+  box-shadow: var(--shadow-card), inset 0 0 0 1px var(--surface-edge);
+  border-color: color-mix(in oklab, var(--border) calc(var(--surface-alpha) * 100%), transparent);
+  position: relative;
+  isolation: isolate;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.3s ease;
+}
+[data-slot="card"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--surface-sheen);
+  pointer-events: none;
+  opacity: calc((1 - var(--surface-alpha)) * 1.4);
+  z-index: -1;
+}
+.card-hover[data-slot="card"]:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card), var(--shadow-glow), inset 0 0 0 1px var(--surface-edge);
+}
+
+/* 顶栏 / 侧栏 / 底栏在玻璃皮肤下同样半透明 */
+.glass-surface {
+  background: color-mix(in oklab, var(--background) calc(var(--surface-alpha) * 82% + 10%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+}
+
+/* 玻璃/液态皮肤：弹层与浮层跟随外层卡片，呈现同样的磨砂质感 */
+html[data-skin="glass"] [data-slot="dialog-content"],
+html[data-skin="glass"] [data-slot="alert-dialog-content"],
+html[data-skin="glass"] [data-slot="sheet-content"],
+html[data-skin="glass"] [data-slot="drawer-content"],
+html[data-skin="liquid"] [data-slot="dialog-content"],
+html[data-skin="liquid"] [data-slot="alert-dialog-content"],
+html[data-skin="liquid"] [data-slot="sheet-content"],
+html[data-skin="liquid"] [data-slot="drawer-content"] {
+  background: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 82% + 12%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+  box-shadow: var(--shadow-card), inset 0 0 0 1px var(--surface-edge);
+}
+html[data-skin="glass"] [data-slot="dropdown-menu-content"],
+html[data-skin="glass"] [data-slot="popover-content"],
+html[data-skin="glass"] [data-slot="hover-card-content"],
+html[data-skin="glass"] [data-slot="command"],
+html[data-skin="liquid"] [data-slot="dropdown-menu-content"],
+html[data-skin="liquid"] [data-slot="popover-content"],
+html[data-skin="liquid"] [data-slot="hover-card-content"],
+html[data-skin="liquid"] [data-slot="command"] {
+  background: color-mix(in oklab, var(--popover) calc(var(--surface-alpha) * 82% + 14%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.6);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
+}
+
+/* 玻璃/液态皮肤：视图里用 .bg-card 拼出的“内部小卡片”也一并磨砂 */
+html[data-skin="glass"] .bg-card {
+  background-color: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 55% + 45%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.5);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
+}
+/* 液态玻璃：内部小卡片清澈通透，能看穿下方的轮廓/文字（模糊量很小） */
+html[data-skin="liquid"] .bg-card {
+  background-color: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 60% + 6%), transparent);
+  backdrop-filter: blur(6px) saturate(1.8);
+  -webkit-backdrop-filter: blur(6px) saturate(1.8);
+  box-shadow: inset 0 0 0 1px var(--surface-edge);
+}
+/* 可点击面板保留悬停反馈（用半透明 accent，避免覆盖成实色） */
+html[data-skin="glass"] .bg-card:hover,
+html[data-skin="liquid"] .bg-card:hover {
+  background-color: color-mix(in oklab, var(--accent) 62%, transparent);
+}
+
+/* 液态玻璃·激进档：更饱和的折射 + 流动彩虹描边 + 掠过式高光 */
+html[data-skin="liquid"] .bg-card {
+  position: relative;
+}
+html[data-skin="liquid"] [data-slot="card"],
+html[data-skin="liquid"] [data-slot="dialog-content"],
+html[data-skin="liquid"] [data-slot="alert-dialog-content"] {
+  backdrop-filter: blur(var(--surface-blur)) saturate(2.3) brightness(1.05);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(2.3) brightness(1.05);
+}
+html[data-skin="liquid"] [data-slot="card"]::after,
+html[data-skin="liquid"] .bg-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(120deg, var(--brand-1), var(--brand-3), var(--brand-2), var(--brand-1));
+  background-size: 300% 300%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 2;
+  animation: liquid-border 9s linear infinite;
+}
+/* 掠过的镜面高光：在 sheen 之上再叠一层移动亮带 */
+html[data-skin="liquid"] [data-slot="card"] {
+  overflow: hidden;
+}
+html[data-skin="liquid"] [data-slot="card"]::before {
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.55) 46%, rgba(255, 255, 255, 0.05) 55%, transparent 70%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.05) 32%, transparent 56%);
+  background-size: 250% 250%, 100% 100%;
+  animation: liquid-sheen 7s ease-in-out infinite;
+  opacity: 1;
+}
+@keyframes liquid-border {
+  to { background-position: 300% 50%; }
+}
+@keyframes liquid-sheen {
+  0% { background-position: -60% 0, 0 0; }
+  55% { background-position: 160% 0, 0 0; }
+  100% { background-position: 160% 0, 0 0; }
+}
+
+/* 渐变主按钮 */
+.btn-brand {
+  background-image: var(--grad-primary);
+  color: #fff;
+  box-shadow: var(--shadow-glow);
+  transition: filter 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+}
+.btn-brand:hover {
+  filter: brightness(1.06);
+}
+.btn-brand:active {
+  transform: translateY(1px);
+}
+.btn-brand:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-glow), 0 0 0 3px color-mix(in oklab, var(--ring) 55%, transparent);
+}
+
+/* tokenized 状态药丸（自动适配明暗与皮肤） */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pill-success {
+  color: var(--success-fg);
+  background: color-mix(in oklab, var(--success) 16%, transparent);
+  border-color: color-mix(in oklab, var(--success) 32%, transparent);
+}
+.pill-warning {
+  color: var(--warning-fg);
+  background: color-mix(in oklab, var(--warning) 16%, transparent);
+  border-color: color-mix(in oklab, var(--warning) 32%, transparent);
+}
+.pill-info {
+  color: var(--info-fg);
+  background: color-mix(in oklab, var(--info) 16%, transparent);
+  border-color: color-mix(in oklab, var(--info) 32%, transparent);
+}
+.pill-danger {
+  color: color-mix(in oklab, var(--destructive) 82%, var(--foreground));
+  background: color-mix(in oklab, var(--destructive) 16%, transparent);
+  border-color: color-mix(in oklab, var(--destructive) 32%, transparent);
+}
+.pill-muted {
+  color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  border-color: var(--border);
+}
+
+/* 页面切换淡入 */
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.view-anim {
+  animation: view-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .view-anim,
+  body,
+  body::before,
+  [data-slot="card"] {
+    animation: none !important;
+    transition: none !important;
+  }
+  html[data-skin="liquid"] [data-slot="card"]::after,
+  html[data-skin="liquid"] [data-slot="card"]::before,
+  html[data-skin="liquid"] .bg-card::after {
+    animation: none !important;
+  }
+  .btn-brand:active {
+    transform: none;
+  }
+}

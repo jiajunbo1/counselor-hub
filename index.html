@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="辅导员学生工作平台：学生档案、宿舍床位、课程与日常记录管理，PC 与手机同步使用。" />
+    <meta name="theme-color" content="#f4f6fb" />
+    <title>辅导员学生工作平台</title>
+    <script>
+      // 首帧前应用主题/皮肤，避免明暗与皮肤闪烁
+      (function () {
+        try {
+          var mode = localStorage.getItem("app.theme.mode") || "light";
+          var skin = localStorage.getItem("app.theme.skin") || "vibrant";
+          var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          if (dark) root.classList.add("dark");
+          root.dataset.skin = skin;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

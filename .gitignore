@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+.qoder-sites/
+.qoder-sites.json
+# Qoder Sites 本地绑定描述文件（含云端 project/site ID 与站点域名）
+*.qoder.site
