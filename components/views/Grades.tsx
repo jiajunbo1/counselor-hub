@@ -97,7 +97,7 @@ function GradeFormDialog({ grade, onClose, store }: { grade: Grade | null; onClo
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "修改成绩" : "录入成绩"}</DialogTitle>
-          <DialogDescription>选择学生后，姓名、学号、班级自动从学生档案同步。这里只登记单科考试总分；学期平时总评请到「综合测评」分段录入。</DialogDescription>
+          <DialogDescription>此处仅登记单科考试分；学期平时总评在「综合测评」录入。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <FormField label="学生" required>
@@ -284,7 +284,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={grades.length === 0 ? "还没有成绩记录，点击「录入成绩」添加第一条。" : "没有符合筛选条件的成绩。"} />
+        <EmptyHint text={grades.length === 0 ? "还没有成绩记录。" : "没有符合筛选条件的成绩。"} />
       ) : (
         <div className="space-y-2">
           {filtered.map((g) => (
@@ -338,7 +338,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
       {importing ? (
         <ImportDialog
           title="导入成绩"
-          description="按学号匹配学生、按课程名称匹配课程，姓名/学号/班级自动同步。只导入单科考试总分；学期平时总评请在「综合测评」分段导入。匹配不到或分数非法的行会被跳过。"
+          description="按学号匹配学生、按课程名称匹配课程。只导入单科考试总分；学期平时总评请在「综合测评」分段导入。匹配不到或分数非法的行会被跳过。"
           columns={GRADE_COLUMNS}
           action="grade.bulk_create"
           chunkSize={150}

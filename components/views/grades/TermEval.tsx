@@ -9,7 +9,7 @@ import { EmptyHint, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { TERM_EVAL_COLUMNS, exportCsv } from "@/lib/import-export";
 import { round1, termAttendDeduct } from "@/lib/evaluation";
-import { ALL, SCORE_RE, SegPills, evalFormulaNote, fmt1, HOT_CLASS } from "./parts";
+import { ALL, SCORE_RE, SegPills, fmt1, HOT_CLASS } from "./parts";
 import { RulesDialog } from "./Attendance";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
@@ -169,7 +169,7 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
       </div>
 
       {rows.length === 0 ? (
-        <EmptyHint text={store.students.length === 0 ? "还没有学生档案，请先在「学生」页导入名单。" : "没有符合条件的学生。"} />
+        <EmptyHint text={store.students.length === 0 ? "还没有学生档案。" : "没有符合条件的学生。"} />
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
           <table className="w-full border-collapse text-sm">
@@ -246,12 +246,11 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
           </table>
         </div>
       )}
-      <p className="px-1 text-[11px] text-muted-foreground">{evalFormulaNote(store.evaluation)}</p>
 
       {importing ? (
         <ImportDialog
           title="导入学期平时总评"
-          description="按学号匹配学生；同一学生同一学期已有总评会被覆盖更新。分数需为 0-100（扣分前的原始分）。"
+          description="首行为表头（可下载模板对照）。按学号匹配学生，已有总评会被覆盖；分数需为 0-100。"
           columns={TERM_EVAL_COLUMNS}
           action="term_eval.bulk_create"
           chunkSize={150}

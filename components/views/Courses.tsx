@@ -156,7 +156,7 @@ export default function CoursesView({ store }: { store: Store }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={courses.length === 0 ? "还没有课程，点击「添加课程」录入课表信息。" : "该班级暂无课程记录。"} />
+        <EmptyHint text={courses.length === 0 ? "还没有课程。" : "该班级暂无课程记录。"} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map((c) => (

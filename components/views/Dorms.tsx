@@ -70,7 +70,6 @@ function RoomFormDialog({ room, onClose, store }: { room: Room | null; onClose: 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? `编辑房间：${room.building} ${room.room_no}` : "添加房间"}</DialogTitle>
-          <DialogDescription>床位数（1-12）。</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <FormField label="楼栋" required>
@@ -80,7 +79,7 @@ function RoomFormDialog({ room, onClose, store }: { room: Room | null; onClose: 
             <Input value={draft.room_no} onChange={(e) => set("room_no")(e.target.value)} placeholder="如：101" maxLength={16} />
           </FormField>
           <FormField label="床位数">
-            <Input value={draft.capacity} onChange={(e) => set("capacity")(e.target.value)} inputMode="numeric" />
+            <Input value={draft.capacity} onChange={(e) => set("capacity")(e.target.value)} inputMode="numeric" placeholder="1-12" />
           </FormField>
           <FormField label="入住性别">
             <Select

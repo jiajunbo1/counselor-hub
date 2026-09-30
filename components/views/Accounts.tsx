@@ -267,7 +267,7 @@ export default function AccountsView({ currentMember }: { currentMember: MemberU
             </AlertDialogTitle>
             <AlertDialogDescription>
               {statusTarget?.status === "active"
-                ? "停用后该账号立即退出所有设备且无法登录，数据保留，可随时重新启用。"
+                ? "停用后该账号立即退出所有设备，可随时重新启用。"
                 : "启用后该账号可再次登录。"}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -296,7 +296,6 @@ export default function AccountsView({ currentMember }: { currentMember: MemberU
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>调整「{roleTarget?.display_name}」的角色</AlertDialogTitle>
-            <AlertDialogDescription>调整后即时生效。</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-2">
             <Button

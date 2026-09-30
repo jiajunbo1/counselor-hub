@@ -182,7 +182,7 @@ export function RulesDialog({ store, onClose }: { store: Store; onClose: () => v
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>综合测评口径</DialogTitle>
-          <DialogDescription>学期平时总评按整学期考勤汇总扣分（与课程无关），再与学分加权考试均分合成学期综合；GPA 只按考试分×学分计算，不随此口径变化。</DialogDescription>
+          <DialogDescription>考勤按整学期汇总扣分（与课程无关）；GPA 只按考试分计算。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -326,12 +326,12 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
           />
         </div>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} 条 · 综合分口径：考试 {store.evaluation.exam_weight}% / 平时 {store.evaluation.usual_weight}%（旷课扣 {store.evaluation.absent_deduct}、迟到早退扣 {store.evaluation.late_deduct}、请假扣 {store.evaluation.leave_deduct}）· 同一节课重复登记只按最重的一条扣一次（未填课程的记录按整天并为一节课）· 学生后来上课等改判情况：直接修改记录类型，或点记录右侧 ⋯ 一键指定按哪条扣、本条不计
+          {filtered.length} 条 · 综合分口径：考试 {store.evaluation.exam_weight}% / 平时 {store.evaluation.usual_weight}%（旷课扣 {store.evaluation.absent_deduct}、迟到早退扣 {store.evaluation.late_deduct}、请假扣 {store.evaluation.leave_deduct}）· 同一节课只按一条扣分
         </span>
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。登记后平时分会自动扣分。" : "没有符合条件的考勤记录。"} />
+        <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。" : "没有符合条件的考勤记录。"} />
       ) : (
         <ul className="space-y-2">
           {filtered.map((a) => (

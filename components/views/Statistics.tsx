@@ -113,7 +113,7 @@ export default function StatisticsView({ store }: { store: Store }) {
     <section className="space-y-4">
       <div>
         <h1 className="text-lg font-bold">统计图表</h1>
-        <p className="text-sm text-muted-foreground">记录趋势、成绩分布与班级概览（随数据实时更新）。</p>
+        <p className="text-sm text-muted-foreground">记录趋势、成绩分布与班级概览。</p>
       </div>
 
       <Card>

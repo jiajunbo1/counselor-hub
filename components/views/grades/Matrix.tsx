@@ -169,7 +169,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
               </tbody>
             </table>
           </div>
-          <p className="px-1 text-[11px] text-muted-foreground">点击任意分数可查看详情。{evalFormulaNote(store.evaluation)} 排名按学期综合分。</p>
+          <p className="px-1 text-[11px] text-muted-foreground">{evalFormulaNote(store.evaluation)}，排名按学期综合分。</p>
         </>
       )}
       {detail ? (

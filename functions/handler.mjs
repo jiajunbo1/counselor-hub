@@ -61,6 +61,159 @@ const EXT_TYPES = {
 };
 const EXT_RE = /^[a-z0-9]{1,8}$/;
 
+// ---- 证件照（批次 Q）：复用 prepare→直传→complete 管线，但独立成表、一生一张、替换即清旧 ----
+const PHOTO_COLS = "id,student_id,uploader_id,uploader_name,original_name,content_type,size_bytes,object_path,created_at,updated_at";
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 证件照场景 2MiB 足够，前端还会本地压到 ≤1MB
+const PHOTO_EXT_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+const photoPath = (studentId, id, ext) => `avatars/${studentId}/${id}.${ext}`;
+
+function photoSafeExt(fileName) {
+  const m = /\.([a-z0-9]{1,8})$/i.exec(fileName ?? "");
+  const ext = m ? m[1].toLowerCase() : "";
+  return PHOTO_EXT_TYPES[ext] ? ext : null;
+}
+
+// 学生本人或任意教职工可为其传照
+function photoWritable(member, studentId) {
+  return member.role !== "student" || (member.student_id && member.student_id === studentId);
+}
+
+// 删除学生时级联清理证件照（尽力而为，与附件同口径）
+async function purgePhotoFor(supabase, studentIds) {
+  const paths = [];
+  for (const sid of studentIds) {
+    const { data } = await supabase.from("student_photos").select("id,object_path").eq("student_id", sid);
+    if (data?.length) {
+      await supabase.from("student_photos").delete().eq("student_id", sid);
+      paths.push(...data.map((r) => r.object_path));
+    }
+  }
+  if (paths.length) {
+    try {
+      const st = await getStorage();
+      if (st) await st.remove(paths.slice(0, 1000));
+    } catch { /* 忽略 */ }
+  }
+}
+
+// 对象路径属于服务端实现细节，任何响应都不外泄
+const publicPhoto = ({ object_path, ...rest }) => rest;
+
+async function handlePhotoWrite({ supabase, action, body, member }) {
+  const storage = await getStorage();
+  if (!storage) return fail("storage_unavailable", 503);
+  // photo.urls 用 student_ids 批量，其余动作用 student_id；各自在校验分支内取 id
+  const studentId = idOf(body.student_id);
+
+  const requireStudentId = () => {
+    if (!studentId) return fail("invalid_id");
+    if (!photoWritable(member, studentId)) return fail("access_denied", 403);
+    return null;
+  };
+
+  switch (action) {
+    case "photo.prepare": {
+      const denied = requireStudentId();
+      if (denied) return denied;
+      const { data: student, error } = await supabase.from("students").select("id").eq("id", studentId).maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!student) return fail("not_found", 404);
+      const fileName = str(body.file_name, { max: 120, required: true });
+      if (!fileName) return fail("invalid_file_name");
+      const ext = photoSafeExt(fileName);
+      if (!ext) return fail("photo_type_not_allowed");
+      const size = intIn(body.size, 1, MAX_PHOTO_BYTES);
+      if (size === null) return fail("photo_too_large");
+      const newId = crypto.randomUUID();
+      try {
+        const signed = await storage.createSignedUploadUrl(photoPath(studentId, newId, ext), { upsert: false });
+        if (!signed?.signedUrl) return fail("storage_unavailable", 503);
+        return json({ ok: true, id: newId, upload_url: signed.signedUrl, content_type: PHOTO_EXT_TYPES[ext] });
+      } catch {
+        return fail("storage_unavailable", 503);
+      }
+    }
+    case "photo.complete": {
+      const denied = requireStudentId();
+      if (denied) return denied;
+      const id = idOf(body.id);
+      if (!id) return fail("invalid_id");
+      const fileName = str(body.file_name, { max: 120, required: true });
+      const ext = fileName ? photoSafeExt(fileName) : null;
+      if (!ext) return fail("photo_type_not_allowed");
+      const expectedBytes = Number(body.size);
+      const objectPath = photoPath(studentId, id, ext);
+      try {
+        const actual = await verifyUploadedObject(await storage.download(objectPath), {
+          maxBytes: MAX_PHOTO_BYTES,
+          expectedBytes,
+          allowedContentTypes: [PHOTO_EXT_TYPES[ext]],
+        });
+        const now = new Date().toISOString();
+        // 平台 DDL 不允许唯一索引，故不用 upsert onConflict：有则原地改、无则插入，行 id 保持稳定。
+        const { data: prev, error: prevErr } = await supabase
+          .from("student_photos").select("id,object_path").eq("student_id", studentId).order("updated_at", { ascending: false });
+        if (prevErr) return fail("database_request_failed", 503);
+        const keepId = prev?.[0]?.id ?? id;
+        const fields = {
+          student_id: studentId,
+          uploader_id: member.id, uploader_name: member.display_name,
+          original_name: fileName,
+          content_type: actual.contentType, size_bytes: String(actual.size),
+          object_path: objectPath, updated_at: now,
+        };
+        const saved = prev?.length
+          ? await supabase.from("student_photos").update(fields).eq("id", keepId).select(PHOTO_COLS).maybeSingle()
+          : await supabase.from("student_photos").insert({ id: keepId, created_at: now, ...fields }).select(PHOTO_COLS).maybeSingle();
+        if (saved.error || !saved.data) return fail("database_request_failed", 503);
+        // 新照已生效才清旧：行删+对象删尽力而为，失败不阻塞
+        for (const p of prev ?? []) {
+          if (p.object_path === objectPath) continue;
+          try { await storage.remove([p.object_path]); } catch { /* 残留对象可由管理端清理 */ }
+        }
+        if ((prev?.length ?? 0) > 1) await supabase.from("student_photos").delete().neq("id", keepId).eq("student_id", studentId);
+        return json({ ok: true, item: publicPhoto(saved.data) });
+      } catch {
+        try { await storage.remove([objectPath]); } catch { /* 尽力清理孤儿对象 */ }
+        return fail("upload_validation_failed");
+      }
+    }
+    case "photo.urls": {
+      // 批量取短时效签名 URL（读行为）：学生请求作用域收缩为仅本人
+      const ids = Array.isArray(body.student_ids)
+        ? body.student_ids.map((v) => idOf(v)).filter(Boolean).slice(0, 300)
+        : [];
+      if (ids.length === 0) return fail("invalid_request");
+      const scoped = member.role === "student" ? ids.filter((sid) => sid === member.student_id) : ids;
+      if (scoped.length === 0) return fail("access_denied", 403);
+      const { data: rows, error } = await supabase.from("student_photos").select(PHOTO_COLS).in("student_id", scoped);
+      if (error) return fail("database_request_failed", 503);
+      const urls = {};
+      for (const row of rows ?? []) {
+        try {
+          const signed = await storage.createSignedUrl(row.object_path, 900);
+          if (signed?.signedUrl) urls[row.student_id] = signed.signedUrl;
+        } catch { /* 单个失败按无照处理 */ }
+      }
+      return json({ ok: true, urls });
+    }
+    case "photo.delete": {
+      const denied = requireStudentId();
+      if (denied) return denied;
+      if (member.role === "student") return fail("access_denied", 403);
+      const { data: row, error } = await supabase.from("student_photos").select(PHOTO_COLS).eq("student_id", studentId).maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!row) return fail("not_found", 404);
+      const { error: delError } = await supabase.from("student_photos").delete().eq("id", row.id);
+      if (delError) return fail("database_request_failed", 503);
+      try { await storage.remove([row.object_path]); } catch { /* 行已删 */ }
+      return json({ ok: true });
+    }
+    default:
+      return fail("unknown_action", 404);
+  }
+}
+
 // 部署环境由平台注入 ./_qoder/storage.mjs；本地 fixture 通过 globalThis.__appStorage 注入假实现。
 let storagePromise = null;
 async function getStorage() {
@@ -1116,6 +1269,7 @@ async function handleWrite({ supabase, action, body }) {
       if (teErr) return fail("database_request_failed", 503);
       const { error: posErr } = await supabase.from("student_positions").delete().eq("student_id", id);
       if (posErr) return fail("database_request_failed", 503);
+      await purgePhotoFor(supabase, [id]);
       const { data, error } = await supabase.from("students").delete().eq("id", id).select("id").maybeSingle();
       if (error) return fail("database_request_failed", 503);
       if (!data) return fail("not_found", 404);
@@ -1914,10 +2068,15 @@ async function handleRead({ supabase, params, member }) {
     }
     return json({ ok: true, data: items });
   }
+  if (action === "photos") {
+    const rows = await listAll(supabase, "student_photos", PHOTO_COLS, "updated_at", 3000);
+    const mine = member.role === "student" ? rows.filter((p) => p.student_id === member.student_id) : rows;
+    return json({ ok: true, data: mine.map(publicPhoto) });
+  }
   return fail("unknown_action", 404);
 }
 
-const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "classmates"]);
+const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "classmates", "photos"]);
 const PUBLIC_WRITE_ACTIONS = new Set(["auth.lookup", "auth.login", "auth.bootstrap", "auth.student_register"]);
 const SELF_WRITE_ACTIONS = new Set(["auth.logout", "auth.change_password", "auth.bind_phone"]);
 const STUDENT_WRITE_ACTIONS = new Set(["profile.submit", "leave.submit", "leave.cancel", "message.send", "attendance.report"]);
@@ -1926,9 +2085,10 @@ const ADMIN_WRITE_ACTIONS = new Set(["account.create", "account.update", "accoun
 const FEEDBACK_SUBMIT_ACTIONS = new Set(["feedback.submit"]);
 const FEEDBACK_ADMIN_ACTIONS = new Set(["feedback.reply"]);
 const ATTACHMENT_ACTIONS = new Set(["attachment.prepare", "attachment.complete", "attachment.download", "attachment.delete"]);
+const PHOTO_ACTIONS = new Set(["photo.prepare", "photo.complete", "photo.delete", "photo.urls"]);
 const BUSINESS_ACTIONS = new Set([
   ...WRITE_ACTIONS, ...SELF_WRITE_ACTIONS, ...ADMIN_WRITE_ACTIONS,
-  ...ATTACHMENT_ACTIONS, ...STUDENT_WRITE_ACTIONS, ...STAFF_WRITE_ACTIONS,
+  ...ATTACHMENT_ACTIONS, ...PHOTO_ACTIONS, ...STUDENT_WRITE_ACTIONS, ...STAFF_WRITE_ACTIONS,
   ...FEEDBACK_SUBMIT_ACTIONS, ...FEEDBACK_ADMIN_ACTIONS,
 ]);
 
@@ -2023,11 +2183,13 @@ export async function handleApi({ request, supabase }) {
       res = await handleStudentWrite({ supabase, action, body, member });
     } else if (ATTACHMENT_ACTIONS.has(action)) {
       res = await handleAttachmentWrite({ supabase, action, body, member });
+    } else if (PHOTO_ACTIONS.has(action)) {
+      res = await handlePhotoWrite({ supabase, action, body, member });
     } else {
       res = await handleWrite({ supabase, action, body });
     }
-    // 下载属于读取行为，不写审计，避免噪声
-    if (res.status === 200 && action !== "attachment.download") {
+    // 下载/取 URL 属于读取行为，不写审计，避免噪声
+    if (res.status === 200 && action !== "attachment.download" && action !== "photo.urls") {
       const detail = ADMIN_WRITE_ACTIONS.has(action)
         ? accountDetail(action, body)
         : (() => {

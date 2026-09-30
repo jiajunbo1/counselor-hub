@@ -261,7 +261,7 @@ export default function FeedbackView({
     <section className="space-y-4">
       <div>
         <h1 className="text-lg font-bold">意见反馈</h1>
-        <p className="text-sm text-muted-foreground">向管理员（开发者）反馈问题或建议，回复显示在下方列表中。</p>
+        <p className="text-sm text-muted-foreground">向管理员反馈问题或建议。</p>
       </div>
 
       <div className="rounded-xl border bg-card p-3 shadow-xs">

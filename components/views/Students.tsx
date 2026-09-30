@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
-import { FileUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Trash2, FileUp, Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import ImportDialog from "@/components/ImportDialog";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -15,7 +15,6 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -31,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { EmptyHint, FormField, Select } from "@/components/form";
+import { PhotoAvatar, deleteStudentPhoto } from "@/lib/photos";
 import type { Store } from "@/hooks/use-store";
 import {
   dormLabel,
@@ -38,6 +38,7 @@ import {
   RECORD_STATUS_LABEL,
   RECORD_TYPE_LABEL,
   type Student,
+  type StudentPhoto,
 } from "@/lib/types";
 import { STUDENT_COLUMNS } from "@/lib/import-export";
 
@@ -119,7 +120,6 @@ function StudentFormDialog({
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `编辑：${(student as Student).name}` : "添加学生"}</DialogTitle>
-          <DialogDescription>标注 * 的为必填项。</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FormField label="学号" required>
@@ -167,6 +167,7 @@ export default function StudentsView({ store }: { store: Store }) {
   const [importing, setImporting] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Student | null>(null);
+  const [deletingPhoto, setDeletingPhoto] = useState<Student | null>(null);
   const [busy, setBusy] = useState(false);
 
   const classOptions = useMemo(() => {
@@ -183,6 +184,12 @@ export default function StudentsView({ store }: { store: Store }) {
     }
     return m;
   }, [store.positions]);
+
+  const photoByStudent = useMemo(() => {
+    const m = new Map<string, StudentPhoto>();
+    for (const p of store.photos) m.set(p.student_id, p);
+    return m;
+  }, [store.photos]);
 
   const filtered = useMemo(() => {
     const keyword = q.trim().toLowerCase();
@@ -244,25 +251,37 @@ export default function StudentsView({ store }: { store: Store }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={students.length === 0 ? "还没有学生档案，点击右上角「添加」开始建立。" : "没有符合筛选条件的学生。"} />
+        <EmptyHint text={students.length === 0 ? "还没有学生档案。" : "没有符合筛选条件的学生。"} />
       ) : (
         <ul className="space-y-2">
           {filtered.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
-                className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border bg-card px-4 py-3 text-left shadow-xs transition-colors hover:bg-accent/40"
+                className="flex w-full items-center gap-3 rounded-xl border bg-card py-2.5 pl-3 pr-4 text-left shadow-xs transition-colors hover:bg-accent/40"
                 onClick={() => setDetailId(s.id)}
               >
-                <span className="w-24 shrink-0 font-semibold">{s.name}</span>
-                <span className="w-28 shrink-0 text-xs tabular-nums text-muted-foreground">{s.student_no}</span>
-                <Badge variant="secondary" className="shrink-0 font-normal">{s.gender}</Badge>
-                <span className="hidden w-28 shrink-0 text-xs text-muted-foreground sm:inline">{s.class_name || "未填班级"}</span>
-                {(titlesByStudent.get(s.id) ?? []).map((t) => (
-                  <Badge key={t} variant="outline" className="shrink-0 border-transparent bg-primary/10 font-normal text-primary">{t}</Badge>
-                ))}
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">宿舍：{dormLabel(s, rooms)}</span>
-                <Pencil className="size-3.5 shrink-0 text-muted-foreground" onClick={(e) => { e.stopPropagation(); setFormStudent(s); }} />
+                <PhotoAvatar studentId={s.id} name={s.name} photo={photoByStudent.get(s.id) ?? null} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-semibold">{s.name}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{s.student_no}</span>
+                    {s.class_name ? (
+                      <Badge variant="secondary" className="shrink-0 font-normal">{s.class_name}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">未填班级</Badge>
+                    )}
+                    {(titlesByStudent.get(s.id) ?? []).map((t) => (
+                      <Badge key={t} variant="outline" className="shrink-0 border-transparent bg-primary/10 font-normal text-primary">{t}</Badge>
+                    ))}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-2 truncate text-xs text-muted-foreground">
+                    <span>{s.gender}</span>
+                    <span aria-hidden>·</span>
+                    <span className="truncate">宿舍：{dormLabel(s, rooms)}</span>
+                  </span>
+                </span>
+                <Pencil className="size-4 shrink-0 text-muted-foreground" onClick={(e) => { e.stopPropagation(); setFormStudent(s); }} />
               </button>
             </li>
           ))}
@@ -314,22 +333,60 @@ export default function StudentsView({ store }: { store: Store }) {
       ) : null}
 
       <Sheet open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
           {detail ? (
             <>
               <SheetHeader>
-                <SheetTitle>{detail.name}</SheetTitle>
-                <SheetDescription>{detail.class_name || "未填班级"} · {detail.student_no}</SheetDescription>
+                <SheetTitle>学生档案</SheetTitle>
               </SheetHeader>
-              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <dt className="text-muted-foreground">性别</dt><dd>{detail.gender}</dd>
-                <dt className="text-muted-foreground">专业</dt><dd>{detail.major || "—"}</dd>
-                <dt className="text-muted-foreground">年级</dt><dd>{detail.grade || "—"}</dd>
-                <dt className="text-muted-foreground">政治面貌</dt><dd>{detail.political_status}</dd>
-                <dt className="text-muted-foreground">手机号</dt><dd className="tabular-nums">{detail.phone || "—"}</dd>
-                <dt className="text-muted-foreground">籍贯</dt><dd>{detail.native_place || "—"}</dd>
-                <dt className="text-muted-foreground">宿舍</dt><dd className="col-span-1">{dormLabel(detail, rooms)}</dd>
-              </dl>
+              <div className="mt-3 flex gap-4">
+                <div className="flex w-[104px] shrink-0 flex-col items-center rounded-xl border bg-card p-2.5 shadow-xs">
+                  <PhotoAvatar
+                    studentId={detail.id}
+                    name={detail.name}
+                    photo={photoByStudent.get(detail.id) ?? null}
+                    size={84}
+                    editable
+                    onUploaded={() => void store.refresh()}
+                  />
+                  <p className="mt-2 w-full truncate text-center font-semibold leading-tight">{detail.name}</p>
+                  <p className="w-full truncate text-center text-xs tabular-nums text-muted-foreground">{detail.student_no}</p>
+                  <div className="mt-1.5 flex flex-wrap justify-center gap-1">
+                    {detail.class_name ? (
+                      <Badge variant="secondary" className="font-normal">{detail.class_name}</Badge>
+                    ) : null}
+                    {(titlesByStudent.get(detail.id) ?? []).map((t) => (
+                      <Badge key={t} variant="outline" className="border-transparent bg-primary/10 font-normal text-primary">{t}</Badge>
+                    ))}
+                  </div>
+                  {photoByStudent.get(detail.id) ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 px-1 text-xs text-muted-foreground"
+                      onClick={() => setDeletingPhoto(detail)}
+                    >
+                      <Trash2 className="size-3" /> 删除证件照
+                    </Button>
+                  ) : (
+                    <p className="mt-2 text-center text-xs text-muted-foreground">未上传证件照</p>
+                  )}
+                </div>
+                <dl className="grid min-w-0 flex-1 auto-rows-min grid-cols-1 gap-x-5 gap-y-2.5 text-sm sm:grid-cols-2">
+                  <Field label="性别">{detail.gender}</Field>
+                  <Field label="专业">{detail.major || "—"}</Field>
+                  <Field label="年级">{detail.grade || "—"}</Field>
+                  <Field label="政治面貌">{detail.political_status}</Field>
+                  <Field label="手机号" className="tabular-nums">{detail.phone || "—"}</Field>
+                  <Field label="籍贯">{detail.native_place || "—"}</Field>
+                  <Field label="宿舍" className="sm:col-span-2">{dormLabel(detail, rooms)}</Field>
+                  {photoByStudent.get(detail.id) ? (
+                    <Field label="照片" className="sm:col-span-2 text-xs text-muted-foreground">
+                      {photoByStudent.get(detail.id)!.uploader_name} 上传 · {photoByStudent.get(detail.id)!.updated_at.slice(0, 10)}
+                    </Field>
+                  ) : null}
+                </dl>
+              </div>
               <div className="mt-4 flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setFormStudent(detail)}>
                   <Pencil className="size-3.5" /> 编辑
@@ -380,6 +437,38 @@ export default function StudentsView({ store }: { store: Store }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={deletingPhoto !== null} onOpenChange={(open) => !open && setDeletingPhoto(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除「{deletingPhoto?.name}」的证件照？</AlertDialogTitle>
+            <AlertDialogDescription>照片将从存储中清除，学生档案不受影响；可随时重新上传。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                const target = deletingPhoto;
+                setDeletingPhoto(null);
+                if (target) void deleteStudentPhoto(target.id, () => void store.refresh());
+              }}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
+  );
+}
+
+function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={cn("break-words", className)}>{children}</dd>
+    </div>
   );
 }

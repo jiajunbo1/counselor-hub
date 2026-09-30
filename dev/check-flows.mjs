@@ -959,5 +959,93 @@ results.push(
     ? "PASS student.delete cascades monitor-reported rows too"
     : "FAIL monitor row leftover after target deletion");
 
+// ---- 批次Q：证件照上传 / 作用域 / 替换清旧 / 级联 ----
+const qStu = await post({ action: "student.create", student_no: "Q900000001", name: "证件照测试", gender: "女", class_name: "测试Q班" }, T);
+const qid = qStu.item?.id;
+let qP2 = null;
+const seedPhotos = await get("photos", T);
+results.push(
+  seedPhotos.ok && seedPhotos.data.some((p) => p.original_name?.includes("王芳")) && seedPhotos.data.every((p) => p.object_path === undefined)
+    ? "PASS photos list: seed photo visible, object_path never leaked"
+    : `FAIL qList ${JSON.stringify(seedPhotos).slice(0, 200)}`
+);
+const qExe = await post({ action: "photo.prepare", student_id: qid, file_name: "photo.exe", size: 100 }, T);
+results.push(qExe.code === "photo_type_not_allowed" ? "PASS photo rejects non-image extension" : `FAIL qExe ${JSON.stringify(qExe)}`);
+const qGif = await post({ action: "photo.prepare", student_id: qid, file_name: "anim.gif", size: 100 }, T);
+results.push(qGif.code === "photo_type_not_allowed" ? "PASS photo stricter than attachment (gif rejected)" : `FAIL qGif ${JSON.stringify(qGif)}`);
+const qBig = await post({ action: "photo.prepare", student_id: qid, file_name: "big.jpg", size: 2 * 1024 * 1024 + 1 }, T);
+results.push(qBig.code === "photo_too_large" ? "PASS photo >2MiB rejected at prepare" : `FAIL qBig ${JSON.stringify(qBig)}`);
+const qGhost = await post({ action: "photo.prepare", student_id: "00000000-0000-4000-8000-000000000000", file_name: "a.jpg", size: 10 }, T);
+results.push(qGhost.code === "not_found" ? "PASS photo prepare requires existing student" : `FAIL qGhost ${JSON.stringify(qGhost)}`);
+const qNoAuth = await post({ action: "photo.prepare", student_id: qid, file_name: "a.jpg", size: 10 });
+results.push(qNoAuth.code === "login_required" && qNoAuth.status === 401 ? "PASS photo endpoints require session" : `FAIL qNoAuth ${JSON.stringify(qNoAuth)}`);
+const qP1 = await post({ action: "photo.prepare", student_id: qid, file_name: "一寸.jpg", size: pngBytes.length }, CT2);
+if (qP1.ok) {
+  await fetch(`http://127.0.0.1:8123${qP1.upload_url}`, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: pngBytes });
+  const qC1 = await post({ action: "photo.complete", id: qP1.id, student_id: qid, file_name: "一寸.jpg", size: pngBytes.length }, CT2);
+  results.push(qC1.ok && qC1.item?.content_type === "image/jpeg" && qC1.item?.object_path === undefined
+    ? "PASS counselor uploads photo, metadata returned without path" : `FAIL qC1 ${JSON.stringify(qC1)}`);
+  qP2 = await post({ action: "photo.prepare", student_id: qid, file_name: "二号.png", size: pngBytes.length }, T);
+  await fetch(`http://127.0.0.1:8123${qP2.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
+  const qC2 = await post({ action: "photo.complete", id: qP2.id, student_id: qid, file_name: "二号.png", size: pngBytes.length }, T);
+  const qAfter = await get("photos", T);
+  const qMine = qAfter.data.filter((p) => p.student_id === qid);
+  const oldObjGone = (await fetch(`http://127.0.0.1:8123/fake-storage/get/avatars/${qid}/${qP1.id}.jpg`)).status === 404;
+  const newObj = await fetch(`http://127.0.0.1:8123/fake-storage/get/avatars/${qid}/${qP2.id}.png`);
+  results.push(qC2.ok && qMine.length === 1 && qMine[0].id === qP1.id && qMine[0].original_name === "二号.png" && oldObjGone && newObj.ok
+    ? "PASS replace keeps one stable row, purges old object, keeps new" : `FAIL qReplace ${qMine.length} ${qMine[0]?.id === qP1.id} ${oldObjGone} ${newObj.status}`);
+}
+const qTamper = await post({ action: "photo.complete", id: qP1.id, student_id: qid, file_name: "改.png", size: pngBytes.length }, T);
+results.push(qTamper.code === "upload_validation_failed" ? "PASS complete rejects extension/path mismatch" : `FAIL qTamper ${JSON.stringify(qTamper)}`);
+// 学生自助传照用独立账号（此前的 S202699 已在中途被级联测试删除）
+const qReg = await post({ action: "auth.student_register", student_no: "Q900000002", name: "自传照生" });
+const qLogin = await post({ action: "auth.login", username: "q900000002", password: "123456" });
+await post({ action: "auth.change_password", old_password: "123456", new_password: "qqphoto9" }, qLogin.token);
+const QT = qLogin.token;
+const qSid = qReg.member?.student_id;
+const qUrls = await post({ action: "photo.urls", student_ids: [qid, qSid].filter(Boolean) }, T);
+results.push(qUrls.ok && typeof qUrls.urls === "object" ? "PASS staff batch-signs avatar urls" : `FAIL qUrls ${JSON.stringify(qUrls)}`);
+const stuPhoto = await post({ action: "photo.prepare", student_id: qSid, file_name: "自传.jpg", size: pngBytes.length }, QT);
+results.push(stuPhoto.ok ? "PASS student can prepare own photo" : `FAIL stuPhoto ${JSON.stringify(stuPhoto)}`);
+if (stuPhoto.ok) {
+  await fetch(`http://127.0.0.1:8123${stuPhoto.upload_url}`, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: pngBytes });
+  const stuDone = await post({ action: "photo.complete", id: stuPhoto.id, student_id: qSid, file_name: "自传.jpg", size: pngBytes.length }, QT);
+  results.push(stuDone.ok ? "PASS student completes own photo upload" : `FAIL stuDone ${JSON.stringify(stuDone)}`);
+}
+const stuOther = await post({ action: "photo.prepare", student_id: qid, file_name: "偷传.jpg", size: pngBytes.length }, QT);
+results.push(stuOther.code === "access_denied" && stuOther.status === 403 ? "PASS student cannot upload for others" : `FAIL stuOther ${JSON.stringify(stuOther)}`);
+const qqDelByStu = await post({ action: "photo.delete", student_id: qSid }, QT);
+results.push(qqDelByStu.code === "access_denied" ? "PASS student cannot delete own photo (only replace)" : `FAIL qqDelByStu ${JSON.stringify(qqDelByStu)}`);
+const stuList = await get("photos", QT);
+results.push(stuList.ok && stuList.data.length === 1 && stuList.data.every((p) => p.student_id === qSid) && !stuList.data.some((p) => p.original_name?.includes("王芳"))
+  ? "PASS student photos scope: own row only, seed row hidden" : `FAIL stuList ${JSON.stringify(stuList).slice(0, 160)}`);
+const stuUrls = await post({ action: "photo.urls", student_ids: [qid] }, QT);
+results.push(stuUrls.code === "access_denied" ? "PASS student cannot sign urls for others" : `FAIL stuUrls ${JSON.stringify(stuUrls)}`);
+const qStuUrls = await post({ action: "photo.urls", student_ids: [qSid] }, QT);
+results.push(qStuUrls.ok && typeof qStuUrls.urls?.[qSid] === "string" ? "PASS student can sign own url batch" : `FAIL qStuUrls ${JSON.stringify(qStuUrls)}`);
+const qBadBody = await post({ action: "photo.urls", student_ids: [] }, T);
+results.push(qBadBody.code === "invalid_request" ? "PASS photo.urls rejects empty batch" : `FAIL qBadBody ${JSON.stringify(qBadBody)}`);
+const qDelLog = await post({ action: "photo.delete", student_id: qid }, T);
+const qDelObjGone = (await fetch(`http://127.0.0.1:8123/fake-storage/get/avatars/${qid}/${qP2.id}.png`)).status === 404;
+const qAfterDel = await get("photos", T);
+results.push(qDelLog.ok && qDelObjGone && qAfterDel.data.every((p) => p.student_id !== qid)
+  ? "PASS staff deletes photo (row + object)" : `FAIL qDel ${JSON.stringify(qDelLog)} ${qDelObjGone}`);
+const qLog = (await get("audit_logs", T)).data.find((l) => l.action === "photo.prepare");
+results.push(qLog ? "PASS photo writes are audited" : "FAIL photo audit missing");
+// 级联：先给测试生传照再删学生，行与对象都应消失
+const qP3 = await post({ action: "photo.prepare", student_id: qid, file_name: "告别照.jpg", size: pngBytes.length }, T);
+await fetch(`http://127.0.0.1:8123${qP3.upload_url}`, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: pngBytes });
+await post({ action: "photo.complete", id: qP3.id, student_id: qid, file_name: "告别照.jpg", size: pngBytes.length }, T);
+await post({ action: "student.delete", id: qid }, T);
+const qFinal = await get("photos", T);
+const qCascadeObjGone = (await fetch(`http://127.0.0.1:8123/fake-storage/get/avatars/${qid}/${qP3.id}.jpg`)).status === 404;
+results.push(qFinal.ok && qFinal.data.every((p) => p.student_id !== qid) && qCascadeObjGone
+  ? "PASS student.delete cascades photo row + object" : `FAIL qCascade ${JSON.stringify(qFinal).slice(0, 120)} ${qCascadeObjGone}`);
+// 收尾：删掉自助注册的测试生，样例库应只剩种子照片（避免污染本地预览）
+if (qSid) await post({ action: "student.delete", id: qSid }, T);
+const qClean = await get("photos", T);
+results.push(qClean.ok && qClean.data.length === 1 && qClean.data[0].original_name?.includes("王芳")
+  ? "PASS batch Q leaves only the seed photo" : `FAIL qCleanup ${JSON.stringify(qClean.data?.map((p) => p.original_name))}`);
+
 console.log(results.join("\n"));
 console.log(results.every((r) => r.startsWith("PASS")) ? `\nALL ${results.length} CASES PASS` : "\nSOME FAILED");

@@ -64,7 +64,7 @@ export function ChangePasswordDialog({
           <DialogTitle>{force ? "首次登录：请修改初始密码" : "修改密码"}</DialogTitle>
           <DialogDescription>
             {force
-              ? "已完成初始密码登录，直接设置新密码即可使用系统。"
+              ? "首次登录，请设置新密码。"
               : "修改后当前登录仍然有效，其他设备需重新登录。"}
           </DialogDescription>
         </DialogHeader>

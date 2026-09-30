@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import { AttachmentsSection } from "@/components/Attachments";
+import { PhotoAvatar } from "@/lib/photos";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
 import { ApiError, apiPost } from "@/lib/api";
@@ -268,6 +269,22 @@ export function StudentProfileView({ store, member }: { store: Store; member: Me
         <EmptyHint text="账号尚未绑定学籍信息，请联系辅导员确认学号已登记后重新注册。" />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
+            <p className="mb-1 text-sm font-semibold">证件照</p>
+            <div className="flex items-center gap-4">
+              <PhotoAvatar
+                studentId={self.id}
+                name={self.name}
+                photo={store.photos.find((p) => p.student_id === self.id) ?? null}
+                size={96}
+                editable
+                onUploaded={() => void store.refresh()}
+              />
+              <div className="min-w-0 text-sm">
+                <p className="text-muted-foreground">点击头像上传或更换本人近期免冠证件照（jpg / png / webp，≤2MB）。</p>
+              </div>
+            </div>
+          </div>
           <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
             <p className="mb-1 text-sm font-semibold">学籍信息</p>
             <InfoRow label="学号" value={self.student_no} />

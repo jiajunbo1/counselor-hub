@@ -8,7 +8,7 @@ import type { Store } from "@/hooks/use-store";
 import type { Student } from "@/lib/types";
 import type { Grade } from "@/lib/types";
 import { rankSummaries, summarizeTerm, type TermSummary } from "@/lib/evaluation";
-import { ALL, evalFormulaNote, fmt1, HOT_CLASS, ScoreCell, termOptionsOf } from "./parts";
+import { ALL, fmt1, HOT_CLASS, ScoreCell, termOptionsOf } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
 function StatTile({ label, value, sub, onClick }: { label: string; value: string; sub?: string; onClick?: () => void }) {
@@ -94,7 +94,6 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
           </tbody>
         </table>
       </div>
-      <p className="px-1 text-[11px] text-muted-foreground">{evalFormulaNote(store.evaluation)}</p>
     </div>
   );
 }
@@ -223,7 +222,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
       </div>
 
       {totalCount === 0 ? (
-        <EmptyHint text={store.grades.length === 0 ? "还没有成绩记录，请到「成绩清单」录入或导入。" : "没有符合条件的学生成绩。"} />
+        <EmptyHint text={store.grades.length === 0 ? "还没有成绩记录。" : "没有符合条件的学生成绩。"} />
       ) : (
         groups.map((g) => (
           <section key={g.term} className="space-y-2">

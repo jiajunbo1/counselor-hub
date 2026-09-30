@@ -178,11 +178,11 @@ export default function MessagesView({
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">{isStudent ? "留言" : "学生留言"}</h1>
-          <p className="text-sm text-muted-foreground">
-            {isStudent
-              ? "留言给辅导员，回复显示在这里。"
-              : `来自学生的留言${openCount > 0 ? ` · ${openCount} 条待回复` : ""}。`}
-          </p>
+          {!isStudent ? (
+            <p className="text-sm text-muted-foreground">
+              来自学生的留言{openCount > 0 ? ` · ${openCount} 条待回复` : ""}。
+            </p>
+          ) : null}
         </div>
         {!isStudent ? (
           <Button variant="outline" size="sm" onClick={() => setOnlyOpen((v) => !v)}>
@@ -214,7 +214,7 @@ export default function MessagesView({
         <EmptyHint
           text={
             isStudent
-              ? "还没有留言，写一条给辅导员吧。"
+              ? "还没有留言。"
               : store.messages.length === 0
                 ? "暂无留言。"
                 : "没有符合条件的留言。"

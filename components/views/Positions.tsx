@@ -160,8 +160,7 @@ function AppointmentDialog({ store, onClose }: { store: Store; onClose: () => vo
             <label className="flex items-start gap-3">
               <Switch checked={attendReport} onCheckedChange={setAttendReport} className="mt-0.5" />
               <span className="min-w-0 text-xs leading-5 text-muted-foreground">
-                开通后，该学生登录时会出现「考勤上报」入口，可登记本班同学的考勤。
-                权限跟随这条委任：撤销职务即自动收回，重新委任需再次开通；已上报的记录保留不清除。
+                开通后该生会出现「考勤上报」入口，可登记本班同学；撤销职务即收回权限，已上报记录保留。
               </span>
             </label>
           </FormField>
@@ -316,8 +315,8 @@ export default function PositionsView({ store }: { store: Store }) {
       {filtered.length === 0 ? (
         <EmptyHint
           text={seg === "active"
-            ? (store.positions.length === 0 ? "还没有委任记录，点击右上角「新委任」开始。" : "没有符合条件的现任职务。")
-            : "没有历史撤销的职务记录。撤销委任后会在这里留档。"}
+            ? (store.positions.length === 0 ? "还没有委任记录。" : "没有符合条件的现任职务。")
+            : "没有历史撤销的职务记录。"}
         />
       ) : seg === "active" ? (
         <div className="space-y-4">

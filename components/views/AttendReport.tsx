@@ -144,14 +144,13 @@ export default function AttendReportView({ store, member }: { store: Store; memb
       <div>
         <h1 className="text-lg font-bold">考勤上报</h1>
         <p className="text-xs text-muted-foreground">
-          以班委身份登记本班同学的考勤。同一同学同一节课若被重复登记，只按扣分最多的一条计一次，不会重复扣分。
+          以班委身份登记本班同学的考勤。
         </p>
       </div>
 
       <Card>
         <CardHeader className="px-4 pb-2">
           <CardTitle className="text-sm">本节登记内容</CardTitle>
-          <CardDescription className="text-xs">先选好内容和下方名单勾选的同学，再一次性提交。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4">
           <SegPills
@@ -236,7 +235,7 @@ export default function AttendReportView({ store, member }: { store: Store; memb
         <CardHeader className="px-4 pb-2">
           <CardTitle className="text-sm">我上报的记录</CardTitle>
           <CardDescription className="text-xs">
-            共 {myReports.length} 条。撤销职务后仍可在此查看历史记录，辅导员可修改或删除。扣几分以辅导员台账为准（老师登记的记录在这一侧看不到）。
+            共 {myReports.length} 条。辅导员可修改或删除已上报记录。
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4">

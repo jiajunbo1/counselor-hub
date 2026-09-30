@@ -4,9 +4,50 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { deflateSync } from "node:zlib";
+
+// 最小真彩 PNG 编码器：样例证件照需要可被浏览器解码的真实字节
+const crcTable = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+const crc32 = (buf) => {
+  let c = 0xffffffff;
+  for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+const pngChunk = (type, data) => {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+};
+function solidPng(width, height, top, bottom) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const rows = [];
+  for (let y = 0; y < height; y++) {
+    const [r, g, b] = y < height / 2 ? top : bottom;
+    const row = Buffer.alloc(1 + width * 3);
+    for (let x = 0; x < width; x++) { row[1 + x * 3] = r; row[2 + x * 3] = g; row[3 + x * 3] = b; }
+    rows.push(row);
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(Buffer.concat(rows))),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 const handler = (await import(pathToFileURL(resolve("functions/handler.mjs")).href)).handleApi;
-const port = Number(process.argv[2] ?? 8000);
+const port = Number(process.argv[2] ?? 8123);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid port");
 
 const db = {
@@ -27,6 +68,7 @@ const db = {
   term_evaluations: [],
   evaluation_settings: [],
   student_positions: [],
+  student_photos: [],
 };
 
 // 内存假存储：模拟平台注入的 storage SDK 与同源相对签名 URL。
@@ -182,6 +224,18 @@ const seed = () => {
   position(s4, "学习委员", "2026-09-08", { attend_report: true });
   position(s6, "体育委员", "2025-09-10", { status: "revoked", revoked_at: "2026-03-01T00:00:00Z", note: "因连续旷课调整" });
 
+  // 证件照演示：王芳一张 240x320 双色示例照（真实上传走 photo.* 链路）
+  {
+    const id = randomUUID();
+    const bytes = new Uint8Array(solidPng(240, 320, [30, 64, 175], [245, 245, 245]));
+    storageObjects.set(`avatars/${s3.id}/${id}.png`, { bytes, contentType: "image/png" });
+    db.student_photos.push({
+      id, student_id: s3.id, uploader_id: "seed-counselor", uploader_name: "示例辅导员",
+      original_name: "王芳-证件照.png", content_type: "image/png", size_bytes: String(bytes.length),
+      object_path: `avatars/${s3.id}/${id}.png`, created_at: "2026-09-20T00:00:00Z", updated_at: "2026-09-20T00:00:00Z",
+    });
+  }
+
   // 综测口径演示：默认考试 70 / 平时 30，旷课扣 5、迟到扣 1、请假不扣
   db.evaluation_settings.push({
     id: randomUUID(), exam_weight: "70", usual_weight: "30",
@@ -228,6 +282,7 @@ const UNIQUE = {
   term_evaluations: [(row, all) => all.some((r) => r.id !== row.id && r.student_id === row.student_id && r.term === row.term)],
   evaluation_settings: [],
   student_positions: [],
+  student_photos: [(row, all) => all.some((r) => r.id !== row.id && r.student_id === row.student_id)],
 };
 const dupError = () => ({ data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } });
 
@@ -239,9 +294,12 @@ function makeBuilder(table) {
   const builder = {
     select(cols) { state.returning = cols; return builder; },
     insert(row) { state.op = "insert"; state.row = row; return builder; },
+    upsert(row, { onConflict } = {}) { state.op = "upsert"; state.row = row; state.conflict = onConflict; return builder; },
     update(patch) { state.op = "update"; state.patch = patch; return builder; },
     delete() { state.op = "delete"; return builder; },
-    eq(col, value) { state.filters.push([col, value]); return builder; },
+    eq(col, value) { state.filters.push(["eq", col, value]); return builder; },
+    neq(col, value) { state.filters.push(["neq", col, value]); return builder; },
+    in(col, values) { state.filters.push(["in", col, values]); return builder; },
     order(col, { ascending = true } = {}) { state.orderCol = col; state.orderAsc = ascending; return builder; },
     limit(n) { state.limitN = n; return builder; },
     single() { state.singleMode = "single"; return builder; },
@@ -267,7 +325,17 @@ function makeBuilder(table) {
       const result = colsOf(row);
       return { data: result, error: null };
     }
-    let matches = rows.filter((r) => state.filters.every(([c, v]) => r[c] === v));
+    let matches = rows.filter((r) => state.filters.every(([op, c, v]) =>
+      op === "in" ? v.includes(r[c]) : op === "neq" ? r[c] !== v : r[c] === v));
+    if (state.op === "upsert") {
+      // 仅支持单冲突列（照片表用 student_id）
+      const row = { created_at: new Date().toISOString(), ...state.row };
+      const idx = rows.findIndex((r) => r[state.conflict] === row[state.conflict]);
+      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      else rows.push(row);
+      if (UNIQUE[table].some((check) => check(row, rows))) return dupError();
+      return { data: colsOf(row), error: null };
+    }
     if (state.op === "update") {
       const next = matches.map((r) => ({ ...r, ...state.patch }));
       for (const candidate of next) {

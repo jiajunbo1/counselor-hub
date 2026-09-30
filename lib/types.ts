@@ -217,6 +217,19 @@ export interface PositionItem {
   class_name: string;
 }
 
+// 证件照元数据（批次 Q）：图像本体在存储桶 avatars/<student_id>/ 下，URL 由 photo.urls 批量签发
+export interface StudentPhoto {
+  id: string;
+  student_id: string;
+  uploader_id: string;
+  uploader_name: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // 班委上报页的同班同学精简档案（后端只在持权限时返回，且不含联系方式等隐私字段）
 export interface Classmate {
   id: string;
@@ -304,28 +317,9 @@ export const ACTION_LABEL: Record<string, string> = {
   "attachment.prepare": "上传附件",
   "attachment.complete": "完成附件上传",
   "attachment.delete": "删除附件",
-};
-
-export const IMPORT_REASON_LABEL: Record<string, string> = {
-  invalid_student_no: "学号无效",
-  invalid_name: "姓名无效",
-  invalid_gender: "性别无效（应为 男/女）",
-  invalid_class_name: "班级无效",
-  invalid_major: "专业无效",
-  invalid_grade: "年级无效",
-  invalid_phone: "电话无效",
-  invalid_native_place: "籍贯无效",
-  invalid_political_status: "政治面貌无效",
-  student_no_exists: "学号已存在",
-  student_not_found: "学号未匹配到学生",
-  course_not_found: "课程名称未匹配",
-  invalid_score: "分数无效（0-100）",
-  invalid_usual_score: "平时总评无效（0-100）",
-  invalid_kind: "考勤类型无效（迟到/旷课/请假/早退）",
-  invalid_occurred_on: "日期无效",
-  invalid_term: "学期无效",
-  invalid_exam_date: "日期无效",
-  invalid_row: "整行无效",
+  "photo.prepare": "上传证件照",
+  "photo.complete": "完成证件照上传",
+  "photo.delete": "删除证件照",
 };
 
 export const RECORD_STATUS_LABEL: Record<RecordStatus, string> = {

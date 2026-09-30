@@ -71,7 +71,8 @@ export function SegPills({ options, value, onChange }: { options: SegOption[]; v
 
 /** 学期综合公式的口径说明（成绩单/矩阵/测评页脚注共用） */
 export function evalFormulaNote(settings: EvaluationSettings): string {
-  return `学期综合 = 学分加权考试均分×${settings.exam_weight}% + 折算平时×${settings.usual_weight}%；考勤扣分（旷课每次${settings.absent_deduct}、迟到/早退每次${settings.late_deduct}、请假每次${settings.leave_deduct}）作用于学期平时总评。`;
+  // 扣分标准只在「考勤台账」与口径弹窗展示，此处只留合成公式，避免同一口径在多页重复铺陈
+  return `学期综合 = 学分加权考试均分×${settings.exam_weight}% + 折算平时×${settings.usual_weight}%`;
 }
 
 export const fmt1 = (n: number | null | undefined): string =>
