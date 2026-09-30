@@ -27,7 +27,7 @@ export function FormField({
   children: ReactNode;
 }) {
   return (
-    <div className={className ?? "grid gap-1.5"}>
+    <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5", className)}>
       <Label className="text-xs text-muted-foreground">
         {label}
         {required ? <span className="text-destructive"> *</span> : null}
@@ -54,7 +54,13 @@ export function Select({
   const encode = (v: string) => (v === "" ? NONE_VALUE : v);
   return (
     <RadixSelect value={encode(value)} onValueChange={(v) => onValueChange(v === NONE_VALUE ? "" : v)}>
-      <SelectTrigger className={cn("w-full text-left", className)}>
+      <SelectTrigger
+        // ui/select 的 *:data-[slot=select-value]:flex 会让长文本硬切无省略号，这里强制回退为可截断的块级
+        className={cn(
+          "w-full min-w-0 text-left [&>[data-slot=select-value]]:!inline-block [&>[data-slot=select-value]]:!truncate",
+          className
+        )}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent position="popper" align="start">

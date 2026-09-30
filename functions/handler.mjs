@@ -910,9 +910,12 @@ async function handleStudentWrite({ supabase, action, body, member }) {
       const start = dateStr(body.start_date);
       const end = dateStr(body.end_date);
       const reason = str(body.content, { max: 1000, required: true });
-      // fallback 必须为 null：str 默认返回 ""，否则 ?? 不生效，学生提交的请假会落成空标题
-      const title = str(body.title, { max: 120, fallback: null }) ?? `请假 ${start.slice(5).replace("-", "/")} - ${end.slice(5).replace("-", "/")}`;
       if (!start || !end || !reason) return fail("invalid_request");
+      // fallback 必须为 null：str 默认返回 ""，否则 ?? 不生效，学生提交的请假会落成空标题
+      const md = (d) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
+      const title =
+        str(body.title, { max: 120, fallback: null }) ??
+        (start === end ? `请假 ${md(start)}` : `请假 ${md(start)} - ${md(end)}`);
       const days = dayDiff(start, end) + 1;
       if (days < 1 || days > 366) return fail("invalid_date_range");
       const rules = await readLeaveRules(supabase);

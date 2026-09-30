@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyHint, FormField, Select } from "@/components/form";
+import { StatusStamp, stampSafeWidth } from "@/components/StatusStamp";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
 import { ApiError, apiPost } from "@/lib/api";
@@ -29,31 +30,14 @@ import {
 
 const dateTime = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 
-// 印章式水印配色：五色区分开发进度
-const STAMP_COLORS: Record<FeedbackStatus, { color: string; opacity: number }> = {
-  pending: { color: "#d97706", opacity: 0.38 },
-  adopted: { color: "#8b5cf6", opacity: 0.55 },
-  optimizing: { color: "#2563eb", opacity: 0.55 },
-  done: { color: "#059669", opacity: 0.6 },
-  no_plan: { color: "#64748b", opacity: 0.45 },
+// 印章配色：五色区分开发进度（尺寸/浓度/角度统一由 components/StatusStamp.tsx 定义）
+const STAMP_COLORS: Record<FeedbackStatus, string> = {
+  pending: "#d97706",
+  adopted: "#8b5cf6",
+  optimizing: "#2563eb",
+  done: "#059669",
+  no_plan: "#64748b",
 };
-
-function StatusStamp({ status }: { status: FeedbackStatus }) {
-  const { color, opacity } = STAMP_COLORS[status] ?? STAMP_COLORS.pending;
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute bottom-1.5 right-2 select-none"
-      style={{ transform: "rotate(-14deg)", opacity, color }}
-    >
-      <div className="flex size-[74px] items-center justify-center rounded-full border-[2.5px] p-[3px]">
-        <div className="flex size-full items-center justify-center rounded-full border border-dashed px-1 text-center">
-          <span className="text-[12px] font-black leading-tight tracking-wider">{FEEDBACK_STATUS_LABEL[status] ?? status}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function StatusBadge({ status }: { status: FeedbackStatus }) {
   const cls =
@@ -80,26 +64,28 @@ function FeedbackCard({
 }) {
   return (
     <li className="relative overflow-hidden rounded-xl border bg-card px-4 py-3 shadow-xs">
-      <StatusStamp status={f.status} />
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Lightbulb className="size-4 shrink-0 text-muted-foreground" />
-        <Badge variant="outline" className="shrink-0 font-normal">
-          {FEEDBACK_CATEGORY_LABEL[f.category] ?? f.category}
-        </Badge>
-        {showAuthor ? (
-          <span className="min-w-0 truncate text-sm text-muted-foreground">
-            {f.user_name}
-            {ROLE_LABEL[f.role as keyof typeof ROLE_LABEL] ? ` · ${ROLE_LABEL[f.role as keyof typeof ROLE_LABEL]}` : ""}
+      <StatusStamp color={STAMP_COLORS[f.status] ?? STAMP_COLORS.pending} label={FEEDBACK_STATUS_LABEL[f.status] ?? f.status} />
+      <div className="relative z-10" style={{ paddingRight: stampSafeWidth }}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Lightbulb className="size-4 shrink-0 text-muted-foreground" />
+          <Badge variant="outline" className="shrink-0 font-normal">
+            {FEEDBACK_CATEGORY_LABEL[f.category] ?? f.category}
+          </Badge>
+          {showAuthor ? (
+            <span className="min-w-0 truncate text-sm text-muted-foreground">
+              {f.user_name}
+              {ROLE_LABEL[f.role as keyof typeof ROLE_LABEL] ? ` · ${ROLE_LABEL[f.role as keyof typeof ROLE_LABEL]}` : ""}
+            </span>
+          ) : null}
+          <StatusBadge status={f.status} />
+          <span className={"shrink-0 text-xs text-muted-foreground" + (showAuthor ? " ml-auto" : "")}>
+            {dateTime(f.created_at)}
           </span>
-        ) : null}
-        <StatusBadge status={f.status} />
-        <span className={"shrink-0 text-xs text-muted-foreground" + (showAuthor ? " ml-auto" : "")}>
-          {dateTime(f.created_at)}
-        </span>
+        </div>
+        <p className="mt-1.5 text-sm leading-6 whitespace-pre-wrap">{f.content}</p>
       </div>
-      <p className="mt-1.5 text-sm leading-6 whitespace-pre-wrap">{f.content}</p>
       {f.reply_note ? (
-        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-muted/60 px-3 py-2">
+        <div className="relative z-10 mt-2 flex items-start gap-1.5 rounded-lg bg-muted/60 px-3 py-2">
           <CornerDownLeft className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">管理员回复</p>

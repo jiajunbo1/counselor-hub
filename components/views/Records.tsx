@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Paperclip, Pencil, Plus, Search, Settings2, Trash2, X } from "lucide-react";
+import { Check, Paperclip, Plus, Search, Settings2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
 import { ApiError, apiPost } from "@/lib/api";
 import { AttachmentsSection } from "@/components/Attachments";
+import { StatusStamp, stampSafeWidth } from "@/components/StatusStamp";
 import {
   RECORD_STATUS_LABEL,
   RECORD_TYPE_LABEL,
@@ -39,6 +40,8 @@ import {
 } from "@/lib/types";
 
 const ALL = "__all";
+// 列表卡内容超过此长度才给「展开」，短事由不必多点一下
+const CONTENT_CLAMP_AT = 80;
 
 const TYPE_BADGE: Record<RecordType, string> = {
   leave: "pill-warning",
@@ -47,45 +50,14 @@ const TYPE_BADGE: Record<RecordType, string> = {
   punish: "pill-danger",
 };
 
-// 请假状态印章水印（借鉴意见反馈卡片）
-const LEAVE_STAMP: Partial<Record<RecordStatus, { color: string; label: string }>> = {
-  pending: { color: "#dc2626", label: "待审批" },
+// 请假状态印章：颜色与文字，尺寸/浓度统一由 components/StatusStamp.tsx 定义
+// 待审批用琥珀色（与待审批卡边框、pill-warning 和反馈页一致），红色只留给「已驳回」，两种状态不再撞色
+const LEAVE_STAMP: Record<RecordStatus, { color: string; label: string }> = {
+  pending: { color: "#d97706", label: "待审批" },
   approved: { color: "#059669", label: "已通过" },
   rejected: { color: "#be123c", label: "已驳回" },
   done: { color: "#2563eb", label: "已办结" },
 };
-
-function Stamp({
-  color,
-  label,
-  size = 66,
-  corner,
-}: {
-  color: string;
-  label: string;
-  size?: number;
-  corner?: boolean;
-}) {
-  return (
-    <div
-      aria-hidden
-      className={"pointer-events-none absolute select-none " + (corner ? "right-3 top-3" : "right-2 top-1/2")}
-      style={{
-        transform: corner ? "rotate(-14deg)" : "translateY(-50%) rotate(-14deg)",
-        color,
-        opacity: 0.55,
-      }}
-    >
-      <div className="flex items-center justify-center rounded-full border-[2.5px] p-[3px]" style={{ width: size, height: size }}>
-        <div className="flex h-full w-full items-center justify-center rounded-full border border-dashed px-1 text-center">
-          <span className="font-black leading-tight tracking-wider" style={{ fontSize: Math.round(size * 0.17) }}>
-            {label}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface RecordDraft {
   student_id: string;
@@ -326,45 +298,52 @@ function RecordFormDialog({
       .map((s) => ({ value: s.id, label: `${s.name}（${s.student_no}）${s.class_name ? " · " + s.class_name : ""}` })),
   ];
 
+  const studentField = (
+    <FormField label="学生" required>
+      <Select value={draft.student_id} onValueChange={set("student_id")} options={studentOptions} />
+    </FormField>
+  );
+  const typeField = lockType ? (
+    <FormField label="类型" required>
+      <Badge variant="outline" className={"h-9 w-fit items-center border-transparent font-normal " + TYPE_BADGE[lockType]}>
+        {RECORD_TYPE_LABEL[lockType]}
+      </Badge>
+    </FormField>
+  ) : (
+    <FormField label="类型" required>
+      <Select
+        value={draft.type}
+        onValueChange={(v) => {
+          set("type")(v);
+          if (!isEdit) set("status")(v === "leave" ? "pending" : "done");
+        }}
+        options={typeOptions.map(([value, label]) => ({ value, label }))}
+      />
+    </FormField>
+  );
+  const dateField = (
+    <FormField label="日期">
+      <DateInput value={draft.occurred_on} onChange={set("occurred_on")} />
+    </FormField>
+  );
+  const titleField = (
+    <FormField label="标题" required className="sm:col-span-2">
+      <Input value={draft.title} onChange={(e) => set("title")(e.target.value)} placeholder={lockType === "leave" ? "如：请假：病假两天" : "如：谈心：学期初适应情况"} maxLength={120} />
+    </FormField>
+  );
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "编辑记录" : lockType === "leave" ? "新增请假" : "新增记录"}</DialogTitle>
-          {lockType !== "leave" ? (
-            <DialogDescription>其余类型默认为「已办结」。</DialogDescription>
-          ) : (
-            <DialogDescription>手动代录的请假默认为「待审批」。</DialogDescription>
-          )}
+          <DialogDescription>{dialogHint(isEdit, lockType)}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormField label="学生" required>
-            <Select value={draft.student_id} onValueChange={set("student_id")} options={studentOptions} />
-          </FormField>
-          {lockType ? (
-            <FormField label="类型" required>
-              <Badge variant="outline" className={"h-9 w-fit items-center border-transparent font-normal " + TYPE_BADGE[lockType]}>
-                {RECORD_TYPE_LABEL[lockType]}
-              </Badge>
-            </FormField>
-          ) : (
-            <FormField label="类型" required>
-              <Select
-                value={draft.type}
-                onValueChange={(v) => {
-                  set("type")(v);
-                  if (!isEdit) set("status")(v === "leave" ? "pending" : "done");
-                }}
-                options={typeOptions.map(([value, label]) => ({ value, label }))}
-              />
-            </FormField>
-          )}
-          <FormField label="标题" required className="sm:col-span-2">
-            <Input value={draft.title} onChange={(e) => set("title")(e.target.value)} placeholder={lockType === "leave" ? "如：请假：病假两天" : "如：谈心：学期初适应情况"} maxLength={120} />
-          </FormField>
-          <FormField label="日期">
-            <DateInput value={draft.occurred_on} onChange={set("occurred_on")} />
-          </FormField>
+          {studentField}
+          {typeField}
+          {titleField}
+          {dateField}
           {isEdit && isLeave ? (
             <FormField label="状态">
               <Select
@@ -391,6 +370,12 @@ function RecordFormDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+// 默认状态说明只在新增时成立，编辑时改成可调整字段的提示
+function dialogHint(isEdit: boolean, lockType?: RecordType): string {
+  if (isEdit) return "状态与审批意见可直接调整，材料在下方增删。";
+  return lockType === "leave" ? "手动代录的请假默认为「待审批」。" : "其余类型默认为「已办结」。";
 }
 
 export default function RecordsView({ store, member }: { store: Store; member: MemberUser }) {
@@ -424,6 +409,14 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
   const [approving, setApproving] = useState<{ record: RecordItem; decision: "approved" | "rejected" } | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const filtered = useMemo(() => {
     let items = records.filter((r) => r.type === type && inScope(r.student_id));
@@ -479,24 +472,31 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
       r.type === "leave" && r.start_date && r.end_date
         ? `${r.start_date} ~ ${r.end_date}${r.leave_days ? ` 共 ${r.leave_days} 天` : ""}`
         : r.occurred_on;
-    return (
-      <li
-        key={r.id}
-        className={
-          "relative overflow-hidden rounded-xl border bg-card px-4 py-3 shadow-xs" + (stamp ? " pr-[88px]" : "")
-        }
+    const attachCount = attachCounts.get(r.id) ?? 0;
+    const long = (r.content?.length ?? 0) > CONTENT_CLAMP_AT;
+    const open = expanded.has(r.id);
+    const editButton = (
+      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setForm({ record: r })}>
+        编辑
+      </Button>
+    );
+    const deleteButton = (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 px-2 text-xs text-destructive"
+        onClick={() => setDeleting(r)}
       >
-        {stamp ? <Stamp color={stamp.color} label={stamp.label} /> : null}
+        删除
+      </Button>
+    );
+    const textBlock = (
+      <>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.title}</span>
           {r.source === "student" ? (
             <Badge variant="outline" className="shrink-0 border-transparent bg-primary/10 font-normal text-primary">
               学生提交
-            </Badge>
-          ) : null}
-          {attachCounts.get(r.id) ? (
-            <Badge variant="outline" className="shrink-0 gap-1 border-transparent bg-muted font-normal text-muted-foreground">
-              <Paperclip className="size-3" /> {attachCounts.get(r.id)}
             </Badge>
           ) : null}
           {!stamp ? (
@@ -505,26 +505,59 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
         </div>
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {studentName(students, r.student_id)} · {leaveRange}
-          {r.content ? ` · ${r.content}` : ""}
-          {r.review_note ? ` · 审批意见：${r.review_note}` : ""}
         </p>
-        <div className="mt-2 flex items-center justify-end gap-1">
-          <Button size="sm" variant="ghost" className="h-7 text-xs" aria-label="编辑记录" onClick={() => setForm({ record: r })}>
-            <Pencil className="size-3.5" />
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" aria-label="删除记录" onClick={() => setDeleting(r)}>
-            <Trash2 className="size-3.5" />
-          </Button>
+        {r.content ? (
+          <p className={"mt-1 text-xs leading-relaxed text-muted-foreground" + (open || !long ? "" : " line-clamp-2")}>
+            {r.content}
+            {long ? (
+              <button
+                type="button"
+                className="ml-1 shrink-0 text-primary hover:underline"
+                onClick={() => toggleExpanded(r.id)}
+              >
+                {open ? "收起" : "展开"}
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        {r.review_note ? (
+          <p className="mt-1 text-xs text-muted-foreground">审批意见：{r.review_note}</p>
+        ) : null}
+      </>
+    );
+
+    // 印章是右上绝对定位的水印层，不决定卡片高度；正文让出的宽度由印章尺寸推导
+    return (
+      <li key={r.id} className="relative overflow-hidden rounded-xl border bg-card px-4 py-3 shadow-xs">
+        {stamp ? <StatusStamp color={stamp.color} label={stamp.label} /> : null}
+        <div className="relative z-10" style={stamp ? { paddingRight: stampSafeWidth } : undefined}>
+          {textBlock}
+        </div>
+        <div className="relative z-10 mt-2 flex items-center gap-1">
+          {attachCount > 0 ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs text-muted-foreground"
+              onClick={() => setForm({ record: r })}
+            >
+              材料 · {attachCount}
+            </Button>
+          ) : null}
+          <div className="ml-auto flex shrink-0 gap-1">
+            {editButton}
+            {deleteButton}
+          </div>
         </div>
       </li>
     );
   };
 
-  const pendingStamp = LEAVE_STAMP.pending ?? { color: "#dc2626", label: "待审批" };
+  const pendingStamp = LEAVE_STAMP.pending;
   const renderPendingCard = (r: RecordItem) => (
     <li key={r.id} className="relative overflow-hidden rounded-xl border-2 border-amber-400/60 bg-card px-4 py-3 shadow-sm">
-      <Stamp corner size={72} color={pendingStamp.color} label={pendingStamp.label} />
-      <div className="max-w-[calc(100%-92px)]">
+      <StatusStamp color={pendingStamp.color} label={pendingStamp.label} />
+      <div className="relative z-10" style={{ paddingRight: stampSafeWidth }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-base font-semibold">{r.title}</span>
           {r.source === "student" ? (
@@ -541,7 +574,7 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
         </p>
         <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed">{r.content || "（未填写事由）"}</p>
       </div>
-      <div className="mt-3 flex items-center gap-2">
+      <div className="relative z-10 mt-3 flex items-center gap-2">
         <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => setForm({ record: r })}>
           <Paperclip className="size-3.5" /> 材料与详情 · {attachCounts.get(r.id) ?? 0}
         </Button>

@@ -505,9 +505,10 @@ if (ST) {
       ? "PASS student submits compliant leave (source=student, 2 days, pending)"
       : `FAIL okLeave ${JSON.stringify(okLeave).slice(0, 180)}`
   );
+  const mdOf = (iso) => `${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
   results.push(
-    /^请假 \d{2}\/\d{2} - \d{2}\/\d{2}$/.test(String(okLeave.item?.title ?? ""))
-      ? "PASS student leave without title gets auto title (no blank title)"
+    okLeave.item?.title === `请假 ${mdOf(day(5))} - ${mdOf(day(6))}`
+      ? "PASS student leave without title gets Chinese auto title (no blank title)"
       : `FAIL autoTitle ${JSON.stringify(okLeave.item?.title)}`
   );
   const overlap = await post({ action: "leave.submit", start_date: day(6), end_date: day(6), content: "与上单重叠" }, ST);
