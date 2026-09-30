@@ -47,3 +47,36 @@ export async function downloadAttachment(att: Attachment): Promise<void> {
     toast.error("下载失败，文件可能已被清理，请刷新后重试。");
   }
 }
+
+// ---- 预览：attachment.download 签 300 秒 URL，缓存 4 分钟；同 id 并发请求合批 ----
+const PREVIEW_TTL_MS = 4 * 60 * 1000;
+const previewCache = new Map<string, { url: string; at: number }>();
+const previewInflight = new Map<string, Promise<string | null>>();
+
+export function attachmentUrl(att: Attachment): Promise<string | null> {
+  const hit = previewCache.get(att.id);
+  if (hit && Date.now() - hit.at < PREVIEW_TTL_MS) return Promise.resolve(hit.url);
+  const pending = previewInflight.get(att.id);
+  if (pending) return pending;
+  const p = apiPost("attachment.download", { id: att.id })
+    .then((res) => {
+      const url = typeof res.url === "string" && res.url ? res.url : null;
+      if (url) previewCache.set(att.id, { url, at: Date.now() });
+      return url;
+    })
+    .catch(() => null)
+    .finally(() => previewInflight.delete(att.id));
+  previewInflight.set(att.id, p);
+  return p;
+}
+
+// 更换材料：先传新件成功、再删旧件，避免中途失败导致材料丢失
+export async function replaceAttachment(
+  recordId: string,
+  old: Attachment,
+  file: File,
+  write: (action: string, payload?: Record<string, unknown>) => Promise<boolean>
+): Promise<void> {
+  if (!(await uploadAttachment(recordId, file))) return;
+  await write("attachment.delete", { id: old.id });
+}

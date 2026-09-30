@@ -61,6 +61,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   leave_requires_material: "按请假规则该申请需要上传材料，请先让学生上传后再通过。",
   leave_date_overlap: "该时间段已存在请假申请，无法重复提交。",
   leave_too_many_pending: "待审批的请假申请过多，请等待处理后再提交。",
+  record_locked: "该请假已由辅导员处理，证明材料不可再修改，如需变更请联系辅导员。",
   invalid_date_range: "请假日期范围不正确，请检查起止日期。",
 };
 

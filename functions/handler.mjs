@@ -98,6 +98,7 @@ async function purgePhotoFor(supabase, studentIds) {
 
 // 对象路径属于服务端实现细节，任何响应都不外泄
 const publicPhoto = ({ object_path, ...rest }) => rest;
+const publicAttachment = ({ object_path, ...rest }) => rest;
 
 async function handlePhotoWrite({ supabase, action, body, member }) {
   const storage = await getStorage();
@@ -659,12 +660,24 @@ async function purgeAttachmentsFor(supabase, recordIds) {
   }
 }
 
-// 学生仅能操作与自己学籍相关的记录（附件随请假单走同一归属判断）
-async function recordOwnedBy(supabase, recordId, member) {
-  if (member.role !== "student") return true;
-  const { data, error } = await supabase.from("records").select("id,student_id").eq("id", recordId).maybeSingle();
+// 学生仅能操作与自己学籍相关的记录（附件随请假单走同一归属判断）。
+// write=true 时追加材料冻结口径：辅导员处理完毕（status 非 pending）后学生不得再增删换附件，
+// 辅导员与管理员不受此限制（可通过后补材料或清理误传文件）。
+async function attachmentGate(supabase, recordId, member, write = false) {
+  const { data, error } = await supabase.from("records").select("id,student_id,status").eq("id", recordId).maybeSingle();
   if (error) throw Object.assign(new Error("read_failed"), { db: true });
-  return Boolean(data && member.student_id && data.student_id === member.student_id);
+  if (!data) return "not_found";
+  if (member.role !== "student") return "ok";
+  if (!member.student_id || data.student_id !== member.student_id) return "denied";
+  if (write && data.status !== "pending") return "locked";
+  return "ok";
+}
+
+function gateFail(gate) {
+  if (gate === "ok") return null;
+  if (gate === "not_found") return fail("not_found", 404);
+  if (gate === "locked") return fail("record_locked", 403);
+  return fail("access_denied", 403);
 }
 
 async function handleAttachmentWrite({ supabase, action, body, member }) {
@@ -676,10 +689,8 @@ async function handleAttachmentWrite({ supabase, action, body, member }) {
     case "attachment.prepare": {
       const recordId = idOf(body.record_id);
       if (!recordId) return fail("invalid_id");
-      const { data: record, error } = await supabase.from("records").select("id").eq("id", recordId).maybeSingle();
-      if (error) return fail("database_request_failed", 503);
-      if (!record) return fail("not_found", 404);
-      if (!(await recordOwnedBy(supabase, recordId, member))) return fail("access_denied", 403);
+      const blockedPrepare = gateFail(await attachmentGate(supabase, recordId, member, true));
+      if (blockedPrepare) return blockedPrepare;
       const fileName = str(body.file_name, { max: 120, required: true });
       if (!fileName) return fail("invalid_file_name");
       const ext = safeExtOf(fileName);
@@ -699,7 +710,8 @@ async function handleAttachmentWrite({ supabase, action, body, member }) {
     case "attachment.complete": {
       const recordId = idOf(body.record_id);
       if (!id || !recordId) return fail("invalid_id");
-      if (!(await recordOwnedBy(supabase, recordId, member))) return fail("access_denied", 403);
+      const blockedComplete = gateFail(await attachmentGate(supabase, recordId, member, true));
+      if (blockedComplete) return blockedComplete;
       const fileName = str(body.file_name, { max: 120, required: true });
       const ext = fileName ? safeExtOf(fileName) : null;
       if (!ext) return fail("invalid_file_name");
@@ -720,7 +732,7 @@ async function handleAttachmentWrite({ supabase, action, body, member }) {
           object_path: objectPath, created_at: now, updated_at: now,
         }).select(ATTACH_COLS).single();
         if (error) return fail("database_request_failed", 503);
-        return json({ ok: true, item: data });
+        return json({ ok: true, item: publicAttachment(data) });
       } catch {
         try { await storage.remove([objectPath]); } catch { /* 尽力清理孤儿对象 */ }
         return fail("upload_validation_failed");
@@ -731,7 +743,9 @@ async function handleAttachmentWrite({ supabase, action, body, member }) {
       const { data: row, error } = await supabase.from("app_attachments").select(ATTACH_COLS).eq("id", id).maybeSingle();
       if (error) return fail("database_request_failed", 503);
       if (!row) return fail("not_found", 404);
-      if (!(await recordOwnedBy(supabase, row.record_id, member))) return fail("access_denied", 403);
+      // 下载/预览属读取：材料冻结后学生仍可查自己的已提交材料
+      const blockedDownload = gateFail(await attachmentGate(supabase, row.record_id, member));
+      if (blockedDownload) return blockedDownload;
       try {
         const signed = await storage.createSignedUrl(row.object_path, 300);
         if (!signed?.signedUrl) return fail("storage_unavailable", 503);
@@ -748,8 +762,10 @@ async function handleAttachmentWrite({ supabase, action, body, member }) {
       const { data: row, error } = await supabase.from("app_attachments").select(ATTACH_COLS).eq("id", id).maybeSingle();
       if (error) return fail("database_request_failed", 503);
       if (!row) return fail("not_found", 404);
-      if (row.uploader_id !== member.id && member.role !== "admin") return fail("access_denied", 403);
-      if (!(await recordOwnedBy(supabase, row.record_id, member))) return fail("access_denied", 403);
+      // 学生只能删自己上传的；辅导员/管理员可清理本记录中传错或过期的材料
+      if (member.role === "student" && row.uploader_id !== member.id) return fail("access_denied", 403);
+      const blockedDelete = gateFail(await attachmentGate(supabase, row.record_id, member, true));
+      if (blockedDelete) return blockedDelete;
       const { error: delError } = await supabase.from("app_attachments").delete().eq("id", id);
       if (delError) return fail("database_request_failed", 503);
       try { await storage.remove([row.object_path]); } catch { /* 行已删；残留对象可由管理端清理 */ }
@@ -894,7 +910,8 @@ async function handleStudentWrite({ supabase, action, body, member }) {
       const start = dateStr(body.start_date);
       const end = dateStr(body.end_date);
       const reason = str(body.content, { max: 1000, required: true });
-      const title = str(body.title, { max: 120 }) ?? `请假 ${start.slice(5).replace("-", "/")} - ${end.slice(5).replace("-", "/")}`;
+      // fallback 必须为 null：str 默认返回 ""，否则 ?? 不生效，学生提交的请假会落成空标题
+      const title = str(body.title, { max: 120, fallback: null }) ?? `请假 ${start.slice(5).replace("-", "/")} - ${end.slice(5).replace("-", "/")}`;
       if (!start || !end || !reason) return fail("invalid_request");
       const days = dayDiff(start, end) + 1;
       if (days < 1 || days > 366) return fail("invalid_date_range");
@@ -2060,13 +2077,14 @@ async function handleRead({ supabase, params, member }) {
     let items = await listAll(supabase, "app_attachments", ATTACH_COLS, "created_at", 1000);
     if (member.role === "student") {
       const mine = new Set(
-        (await listAll(supabase, "records", "id", "occurred_on", 1000))
-          .filter((r) => r.student_id === member.student_id)
+        // 必须 select student_id：只取 id 时下面过滤恒为空，学生看不到自己的材料
+        (await listAll(supabase, "records", "id,student_id", "occurred_on", 1000))
+          .filter((r) => r.student_id && r.student_id === member.student_id)
           .map((r) => r.id)
       );
       items = items.filter((a) => mine.has(a.record_id));
     }
-    return json({ ok: true, data: items });
+    return json({ ok: true, data: items.map(publicAttachment) });
   }
   if (action === "photos") {
     const rows = await listAll(supabase, "student_photos", PHOTO_COLS, "updated_at", 3000);

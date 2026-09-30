@@ -362,7 +362,6 @@ export interface Attachment {
   original_name: string;
   content_type: string;
   size_bytes: string;
-  object_path: string;
   created_at: string;
 }
 

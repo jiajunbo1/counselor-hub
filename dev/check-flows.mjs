@@ -170,13 +170,14 @@ results.push(prep.ok && /^[0-9a-f-]{36}$/.test(prep.id) && prep.upload_url?.star
 if (prep.ok) {
   const putR = await fetch(`http://127.0.0.1:8123${prep.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
   const done = await post({ action: "attachment.complete", id: prep.id, record_id: attachRecord.id, file_name: "校医院证明.png", size: pngBytes.length }, T);
-  results.push(putR.ok && done.ok && done.item?.size_bytes === "8" && done.item?.uploader_name === "系统管理员" ? "PASS upload + complete (verified bytes stored)" : `FAIL done ${putR.status} ${JSON.stringify(done)}`);
+  results.push(putR.ok && done.ok && done.item?.size_bytes === "8" && done.item?.uploader_name === "系统管理员" && done.item?.object_path === undefined ? "PASS upload + complete (verified bytes stored, no path leak)" : `FAIL done ${putR.status} ${JSON.stringify(done)}`);
   const dl = await post({ action: "attachment.download", id: prep.id }, T);
   let bytesBack = null;
   if (dl.ok) bytesBack = new Uint8Array(await (await fetch(`http://127.0.0.1:8123${dl.url}`)).arrayBuffer());
   results.push(dl.ok && bytesBack && bytesBack.length === pngBytes.length && bytesBack[1] === 0x50 ? "PASS download via signed url returns same bytes" : `FAIL dl ${JSON.stringify(dl)}`);
   const attList = await get("attachments", T);
   results.push(attList.ok && attList.data.some((a) => a.id === prep.id && a.record_id === attachRecord.id) ? "PASS attachments listable" : `FAIL attList ${JSON.stringify(attList).slice(0, 160)}`);
+  results.push(attList.ok && attList.data.every((a) => a.object_path === undefined) ? "PASS attachments list never leaks object_path" : `FAIL attLeak ${JSON.stringify(attList).slice(0, 160)}`);
   const missing = await post({ action: "attachment.complete", id: "00000000-0000-4000-8000-00000000abcd", record_id: attachRecord.id, file_name: "没上传.png", size: 8 }, T);
   results.push(missing.code === "upload_validation_failed" ? "PASS complete rejects absent object" : `FAIL missing ${JSON.stringify(missing)}`);
 }
@@ -186,19 +187,19 @@ const big = await post({ action: "attachment.prepare", record_id: attachRecord.i
 results.push(big.code === "file_too_large" ? "PASS >5MiB rejected at prepare" : `FAIL big ${JSON.stringify(big)}`);
 const fakeRec = await post({ action: "attachment.prepare", record_id: "00000000-0000-4000-8000-000000000000", file_name: "a.pdf", size: 10 }, T);
 results.push(fakeRec.code === "not_found" ? "PASS prepare requires existing record" : `FAIL fakeRec ${JSON.stringify(fakeRec)}`);
-// 辅导员上传，本人可删、他人不可删（该账号此前被重置为 kickpass1，需先改密解锁）
+// 辅导员可清理记录上的材料（含他人上传的），管理员同样可以
 const c2Login = await post({ action: "auth.login", username: "testcounselor", password: "kickpass1" });
 if (c2Login.ok) {
   await post({ action: "auth.change_password", old_password: "kickpass1", new_password: "counfinal9" }, c2Login.token);
 }
 if (c2Login.ok) {
   const otherDel = await post({ action: "attachment.delete", id: prep.id }, c2Login.token);
-  const selfDel = await post({ action: "attachment.delete", id: prep.id }, T);
   const afterDel = await post({ action: "attachment.download", id: prep.id }, T);
+  const objGone = (await fetch(`http://127.0.0.1:8123/fake-storage/get/attachments/${attachRecord.id}/${prep.id}.png`)).status === 404;
   results.push(
-    otherDel.code === "access_denied" && selfDel.ok && afterDel.code === "not_found"
-      ? "PASS delete: non-uploader counselor denied, uploader ok, row gone"
-      : `FAIL del ${JSON.stringify(otherDel)} ${JSON.stringify(selfDel)} ${JSON.stringify(afterDel)}`
+    otherDel.ok && afterDel.code === "not_found" && objGone
+      ? "PASS counselor deletes others' material (row + object gone)"
+      : `FAIL del ${JSON.stringify(otherDel)} ${JSON.stringify(afterDel)} ${objGone}`
   );
   const p2 = await post({ action: "attachment.prepare", record_id: attachRecord.id, file_name: "假条.jpg", size: pngBytes.length }, c2Login.token);
   if (p2.ok) {
@@ -504,6 +505,11 @@ if (ST) {
       ? "PASS student submits compliant leave (source=student, 2 days, pending)"
       : `FAIL okLeave ${JSON.stringify(okLeave).slice(0, 180)}`
   );
+  results.push(
+    /^请假 \d{2}\/\d{2} - \d{2}\/\d{2}$/.test(String(okLeave.item?.title ?? ""))
+      ? "PASS student leave without title gets auto title (no blank title)"
+      : `FAIL autoTitle ${JSON.stringify(okLeave.item?.title)}`
+  );
   const overlap = await post({ action: "leave.submit", start_date: day(6), end_date: day(6), content: "与上单重叠" }, ST);
   results.push(overlap.code === "leave_date_overlap" ? "PASS overlapping leave rejected" : `FAIL overlap ${JSON.stringify(overlap)}`);
   const listMine = await get("records", ST);
@@ -515,11 +521,48 @@ if (ST) {
   const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
   const prep = await post({ action: "attachment.prepare", record_id: okLeave.item?.id, file_name: "证明.png", size: pngBytes.length }, ST);
   results.push(prep.ok ? "PASS student prepares attachment on own leave" : `FAIL prep ${JSON.stringify(prep)}`);
+  // 竞态用第二件：待审批时 prepare+直传，辅导员处理后学生再 complete 必须被拒
+  const prepB = await post({ action: "attachment.prepare", record_id: okLeave.item?.id, file_name: "后补.png", size: pngBytes.length }, ST);
+  if (prepB.ok) {
+    await fetch(`http://127.0.0.1:8123${prepB.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
+  }
   if (prep.ok) {
     await fetch(`http://127.0.0.1:8123${prep.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
     const done = await post({ action: "attachment.complete", id: prep.id, record_id: okLeave.item?.id, file_name: "证明.png", size: pngBytes.length }, ST);
     const approveOk = await post({ action: "record.update", id: okLeave.item?.id, status: "approved" }, T);
     results.push(done.ok && approveOk.ok && approveOk.item?.status === "approved" ? "PASS material uploaded → leave approvable" : `FAIL approveOk ${JSON.stringify(done)} ${JSON.stringify(approveOk)}`);
+
+    if (prepB.ok) {
+      const lateComplete = await post({ action: "attachment.complete", id: prepB.id, record_id: okLeave.item?.id, file_name: "后补.png", size: pngBytes.length }, ST);
+      const afterLate = await get("attachments", ST);
+      results.push(
+        lateComplete.code === "record_locked" && lateComplete.status === 403 && afterLate.data.every((a) => a.id !== prepB.id)
+          ? "PASS complete blocked after processing (prepared-while-pending race closed)"
+          : `FAIL lateComplete ${JSON.stringify(lateComplete)}`
+      );
+    }
+    // 材料冻结：学生不可增/删，但仍可查看自己交过的材料；辅导员仍可补
+    const lockedPrep = await post({ action: "attachment.prepare", record_id: okLeave.item?.id, file_name: "补交.png", size: pngBytes.length }, ST);
+    const lockedDel = await post({ action: "attachment.delete", id: prep.id }, ST);
+    results.push(
+      lockedPrep.code === "record_locked" && lockedDel.code === "record_locked"
+        ? "PASS student material frozen once processed (prepare + delete both rejected)"
+        : `FAIL freeze ${JSON.stringify(lockedPrep)} ${JSON.stringify(lockedDel)}`
+    );
+    const frozenDl = await post({ action: "attachment.download", id: prep.id }, ST);
+    results.push(frozenDl.ok && typeof frozenDl.url === "string" ? "PASS frozen material still viewable by its student" : `FAIL frozenDl ${JSON.stringify(frozenDl)}`);
+    const stuAtts = await get("attachments", ST);
+    results.push(
+      stuAtts.ok && stuAtts.data.some((a) => a.id === prep.id) && stuAtts.data.every((a) => a.object_path === undefined)
+        ? "PASS student attachment list is self-scoped (visible after processing)"
+        : `FAIL stuAtts ${JSON.stringify(stuAtts).slice(0, 160)}`
+    );
+    // 辅导员处理后可补充材料（前文 testcounselor 已停用，这里新建一个辅导员会话）
+    await post({ action: "account.create", username: "matelock", display_name: "材料冻结测试", role: "counselor", password: "matelock123" }, T);
+    const mlLogin = await post({ action: "auth.login", username: "matelock", password: "matelock123" });
+    await post({ action: "auth.change_password", old_password: "matelock123", new_password: "matelock456" }, mlLogin.token);
+    const staffPrep = await post({ action: "attachment.prepare", record_id: okLeave.item?.id, file_name: "辅导员补充说明.png", size: pngBytes.length }, mlLogin.token);
+    results.push(staffPrep.ok ? "PASS counselor can still add material after processing" : `FAIL staffPrep ${JSON.stringify(staffPrep)}`);
   }
   // 已批准的请假不可撤回
   const cancelApproved = await post({ action: "leave.cancel", id: okLeave.item?.id }, ST);
@@ -542,6 +585,25 @@ if (ST) {
 
   // 9) 撤回待审批请假
   const openLeave = await post({ action: "leave.submit", start_date: day(20), end_date: day(20), content: "临时取消" }, ST);
+  // 9b) 待审批期间可更换材料：先传新件成功、再删旧件
+  const attA = await post({ action: "attachment.prepare", record_id: openLeave.item?.id, file_name: "初版证明.png", size: pngBytes.length }, ST);
+  if (attA.ok) {
+    await fetch(`http://127.0.0.1:8123${attA.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
+    const aDone = await post({ action: "attachment.complete", id: attA.id, record_id: openLeave.item.id, file_name: "初版证明.png", size: pngBytes.length }, ST);
+    const attB = await post({ action: "attachment.prepare", record_id: openLeave.item.id, file_name: "新版证明.png", size: pngBytes.length }, ST);
+    let bDone = { ok: false };
+    if (attB.ok) {
+      await fetch(`http://127.0.0.1:8123${attB.upload_url}`, { method: "PUT", headers: { "content-type": "image/png" }, body: pngBytes });
+      bDone = await post({ action: "attachment.complete", id: attB.id, record_id: openLeave.item.id, file_name: "新版证明.png", size: pngBytes.length }, ST);
+    }
+    const delOld = await post({ action: "attachment.delete", id: attA.id }, ST);
+    const afterReplace = await get("attachments", ST);
+    results.push(
+      aDone.ok && attB.ok && bDone.ok && delOld.ok && afterReplace.data.some((a) => a.id === attB.id) && afterReplace.data.every((a) => a.id !== attA.id)
+        ? "PASS student replaces material while pending (new stored, old removed)"
+        : `FAIL replace ${JSON.stringify(aDone)} ${JSON.stringify(attB)} ${JSON.stringify(bDone)} ${JSON.stringify(delOld)}`
+    );
+  }
   const cancelled = await post({ action: "leave.cancel", id: openLeave.item?.id }, ST);
   const gone = (await get("records", ST)).data.some((r) => r.id === openLeave.item?.id);
   results.push(openLeave.ok && cancelled.ok && !gone ? "PASS student cancels pending leave" : `FAIL cancel ${JSON.stringify(openLeave)} ${JSON.stringify(cancelled)}`);

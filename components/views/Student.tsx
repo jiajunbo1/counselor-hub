@@ -450,7 +450,8 @@ export default function StudentView({
                   审批意见：{r.review_note}
                 </p>
               ) : null}
-              {r.source === "student" && r.status === "pending" ? (
+              {/* 材料在审批后仍可查看，但学生端只读（见 AttachmentsSection 的 locked 口径） */}
+              {r.source === "student" ? (
                 <div className="mt-2 border-t pt-2">
                   <AttachmentsSection record={r} store={store} member={member} />
                 </div>
