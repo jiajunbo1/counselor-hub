@@ -189,7 +189,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-64">
+        <div className="relative min-w-40 flex-1 sm:max-w-64">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={keyword}
@@ -215,7 +215,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
           onGroupByClass={setGroupByClass}
           showGroupToggle={scope.cls === ALL_CLASS && sortMode === "composite"}
         />
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground" title={`${totalCount} 张成绩单`}>
           {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term} · 当前{sortCaption(sortMode, groupByClass)}
         </span>
       </div>
