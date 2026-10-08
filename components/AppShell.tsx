@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   BedDouble,
   BookOpen,
@@ -30,6 +30,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useTheme } from "@/lib/theme";
 import { useStore, type Store } from "@/hooks/use-store";
 import { useAuth, type Auth } from "@/hooks/use-auth";
+import { ALL_CLASS, ClassScopeProvider, useClassScope } from "@/hooks/use-class-scope";
+import { Select } from "@/components/form";
 import OverviewView from "@/components/views/Overview";
 import StudentsView from "@/components/views/Students";
 import DormsView from "@/components/views/Dorms";
@@ -48,17 +50,17 @@ import { ChangePasswordDialog } from "@/components/account-dialogs";
 import { ROLE_LABEL } from "@/lib/types";
 
 const TABS = [
-  { id: "overview", label: "总览", icon: LayoutDashboard, group: "事务" },
-  { id: "leaves", label: "请假", icon: CalendarDays, group: "事务" },
-  { id: "records", label: "记录", icon: ClipboardList, group: "事务" },
-  { id: "messages", label: "留言", icon: MessageSquareText, group: "事务" },
-  { id: "feedback", label: "反馈", icon: Lightbulb, group: "事务", hideForAdmin: true },
-  { id: "students", label: "学生", icon: Users, group: "学业" },
-  { id: "dorms", label: "宿舍", icon: BedDouble, group: "学业" },
-  { id: "courses", label: "课程", icon: BookOpen, group: "学业" },
-  { id: "grades", label: "成绩", icon: GraduationCap, group: "学业" },
-  { id: "honors", label: "荣誉", icon: Medal, group: "学业" },
-  { id: "positions", label: "职务", icon: Crown, group: "学业" },
+  { id: "overview", label: "总览", icon: LayoutDashboard, group: "全局事务" },
+  { id: "messages", label: "留言", icon: MessageSquareText, group: "全局事务" },
+  { id: "feedback", label: "反馈", icon: Lightbulb, group: "全局事务", hideForAdmin: true },
+  { id: "dorms", label: "宿舍", icon: BedDouble, group: "全局事务" },
+  { id: "students", label: "学生", icon: Users, group: "班级工作区" },
+  { id: "courses", label: "课程", icon: BookOpen, group: "班级工作区" },
+  { id: "grades", label: "成绩", icon: GraduationCap, group: "班级工作区" },
+  { id: "honors", label: "荣誉", icon: Medal, group: "班级工作区" },
+  { id: "positions", label: "职务", icon: Crown, group: "班级工作区" },
+  { id: "leaves", label: "请假", icon: CalendarDays, group: "班级工作区" },
+  { id: "records", label: "记录", icon: ClipboardList, group: "班级工作区" },
   { id: "statistics", label: "统计", icon: ChartColumn, group: "系统" },
   { id: "admin", label: "后台", icon: ShieldCheck, group: "系统", adminOnly: true },
   { id: "more", label: "更多", icon: Ellipsis, group: "系统" },
@@ -92,7 +94,11 @@ export default function App() {
       </>
     );
   }
-  return <Workspace auth={auth} />;
+  return (
+    <ClassScopeProvider>
+      <Workspace auth={auth} />
+    </ClassScopeProvider>
+  );
 }
 
 function Workspace({ auth }: { auth: Auth }) {
@@ -101,12 +107,26 @@ function Workspace({ auth }: { auth: Auth }) {
   const isAdmin = member?.role === "admin";
   const isStudent = member?.role === "student";
   const store = useStore(isStudent ? "student" : isAdmin ? "admin" : "staff");
+  const scope = useClassScope();
+  const classOptions = useMemo(() => {
+    const uniq = [...new Set(store.students.map((s) => s.class_name).filter((c): c is string => !!c))].sort();
+    return [{ value: ALL_CLASS, label: "全部班级" }, ...uniq.map((c) => ({ value: c, label: c }))];
+  }, [store.students]);
+  useEffect(() => {
+    // 记住的班级可能已被改名/无人（比如学生全部转出），回落「全部班级」避免整站空列表
+    // 首屏还没加载到学生时不能判残，否则会误清掉 localStorage 里记住的班级
+    if (store.loading || store.students.length === 0) return;
+    if (scope.cls !== ALL_CLASS && !classOptions.some((o) => o.value === scope.cls)) scope.setCls(ALL_CLASS);
+  }, [classOptions, scope, store.loading, store.students.length]);
   const [tab, setTab] = useState<TabId>(isStudent ? "s_leave" : "overview");
   const [adminSection, setAdminSection] = useState<AdminSection>("accounts");
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [tab]);
-  const pendingCount = store.records.filter((r) => r.type === "leave" && r.status === "pending").length;
+  const studentClassById = useMemo(() => new Map(store.students.map((s) => [s.id, s.class_name])), [store.students]);
+  const pendingCount = store.records.filter(
+    (r) => r.type === "leave" && r.status === "pending" && (scope.cls === ALL_CLASS || studentClassById.get(r.student_id) === scope.cls)
+  ).length;
   const openMsgCount = isStudent
     ? store.messages.filter((m) => m.replied === 1 && m.sender_role === "student").length
     : store.messages.filter((m) => m.replied !== 1).length;
@@ -229,6 +249,12 @@ function Workspace({ auth }: { auth: Auth }) {
             <div className="truncate text-[11px] text-muted-foreground">学生工作信息管理</div>
           </div>
         </div>
+        {!isStudent ? (
+          <div className="px-3 pb-1">
+            <div className="px-1 pb-1 text-[11px] font-semibold tracking-widest text-muted-foreground/70">当前班级</div>
+            <Select value={scope.cls} onValueChange={scope.setCls} options={classOptions} ariaLabel="班级作用域" />
+          </div>
+        ) : null}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2" aria-label="主导航">
           {visibleTabs.map((t, i) => {
             const active = tab === t.id;
@@ -239,8 +265,16 @@ function Workspace({ auth }: { auth: Auth }) {
             return (
               <Fragment key={t.id}>
                 {heading ? (
-                  <div className="px-3 pb-0.5 pt-4 text-[11px] font-semibold tracking-widest text-muted-foreground/70">
-                    {heading}
+                  <div
+                    className={
+                      "flex min-w-0 items-center gap-1.5 px-3 pb-0.5 pt-4 text-[11px] font-semibold tracking-widest " +
+                      (heading === "班级工作区" && scope.cls !== ALL_CLASS ? "text-primary" : "text-muted-foreground/70")
+                    }
+                  >
+                    <span className="shrink-0">{heading}</span>
+                    {heading === "班级工作区" && scope.cls !== ALL_CLASS ? (
+                      <span className="truncate font-normal tracking-normal opacity-80">· {scope.cls}</span>
+                    ) : null}
                   </div>
                 ) : null}
                 <button
@@ -311,6 +345,11 @@ function Workspace({ auth }: { auth: Auth }) {
             </span>
             <span className="text-sm font-bold">辅导员工作台</span>
           </div>
+          {!isStudent ? (
+            <div className="min-w-0 max-w-[10rem] flex-1">
+              <Select value={scope.cls} onValueChange={scope.setCls} options={classOptions} ariaLabel="班级作用域" />
+            </div>
+          ) : null}
           <div className="flex items-center gap-0.5">
             <AppearanceMenu />
             <Button variant="ghost" size="icon" onClick={() => void store.refresh()} aria-label="刷新数据">

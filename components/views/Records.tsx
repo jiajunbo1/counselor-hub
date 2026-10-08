@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, useClassScope } from "@/hooks/use-class-scope";
 import type { MemberUser } from "@/lib/session";
 import { ApiError, apiPost } from "@/lib/api";
 import { AttachmentsSection } from "@/components/Attachments";
@@ -393,6 +394,8 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
   const [status, setStatus] = useState(ALL);
   const [leaveSeg, setLeaveSeg] = useState<"pending" | "handled">("pending");
   const [q, setQ] = useState("");
+  const scope = useClassScope();
+  const classById = useMemo(() => new Map(students.map((s) => [s.id, s.class_name])), [students]);
   const query = q.trim().toLowerCase();
   const matchIds = useMemo(() => {
     if (!query) return null;
@@ -403,7 +406,11 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
     return set;
   }, [students, query]);
   const focusStudent = matchIds && matchIds.size === 1 ? students.find((s) => matchIds.has(s.id)) ?? null : null;
-  const inScope = (id: string) => !matchIds || matchIds.has(id);
+  const inScope = (id: string) => {
+    if (matchIds && !matchIds.has(id)) return false;
+    if (scope.cls !== ALL_CLASS && classById.get(id) !== scope.cls) return false;
+    return true;
+  };
   const [form, setForm] = useState<{ record: RecordItem | null; preset?: string; presetType?: RecordType } | null>(null);
   const [deleting, setDeleting] = useState<RecordItem | null>(null);
   const [approving, setApproving] = useState<{ record: RecordItem; decision: "approved" | "rejected" } | null>(null);
@@ -422,13 +429,13 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
     let items = records.filter((r) => r.type === type && inScope(r.student_id));
     if (status !== ALL) items = items.filter((r) => r.status === status);
     return items;
-  }, [records, type, status, matchIds]);
+  }, [records, type, status, matchIds, scope, classById]);
   const byDateDesc = (a: RecordItem, b: RecordItem) =>
     a.occurred_on < b.occurred_on ? 1 : a.occurred_on > b.occurred_on ? -1 : 0;
   const pendingLeaves = useMemo(
     () => records.filter((r) => r.type === "leave" && r.status === "pending" && inScope(r.student_id)).sort(byDateDesc),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [records, matchIds]
+    [records, matchIds, scope, classById]
   );
   const handledLeaves = useMemo(
     () =>
@@ -439,18 +446,19 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
         )
         .sort(byDateDesc),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [records, status, matchIds]
+    [records, status, matchIds, scope, classById]
   );
   const handledLeaveCount = useMemo(
     () => records.filter((r) => r.type === "leave" && r.status !== "pending" && inScope(r.student_id)).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [records, matchIds]
+    [records, matchIds, scope, classById]
   );
   const typeCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const r of records) if (r.type !== "leave") map.set(r.type, (map.get(r.type) ?? 0) + 1);
+    for (const r of records) if (r.type !== "leave" && inScope(r.student_id)) map.set(r.type, (map.get(r.type) ?? 0) + 1);
     return map;
-  }, [records]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, matchIds, scope, classById]);
   const attachCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of attachments) map.set(a.record_id, (map.get(a.record_id) ?? 0) + 1);

@@ -7,6 +7,7 @@ import ImportDialog from "@/components/ImportDialog";
 import { Input } from "@/components/ui/input";
 import { EmptyHint, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import { TERM_EVAL_COLUMNS, exportCsv } from "@/lib/import-export";
 import { gradesOfTerm, round1, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
@@ -29,7 +30,7 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
   );
   const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
   const [term, setTerm] = useState<string | null>(focusTerm ?? null);
-  const [cls, setCls] = useState(ALL);
+  const classScope = useClassScope();
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
   const [keyword, setKeyword] = useState(focusNo ?? "");
@@ -45,10 +46,6 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
     const list = focusTerm && !terms.includes(focusTerm) ? [...terms, focusTerm].sort() : terms;
     return list.map((t) => ({ value: t, label: t }));
   }, [terms, focusTerm]);
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.students.map((s) => s.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.students]
-  );
   const evalByStudent = useMemo(
     () => new Map(store.termEvals.filter((e) => e.term === activeTerm).map((e) => [e.student_id, e])),
     [store.termEvals, activeTerm]
@@ -79,7 +76,7 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
   const rows = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return store.students
-      .filter((s) => cls === ALL || s.class_name === cls)
+      .filter((s) => inClassScope(classScope, s.class_name))
       .filter((s) => !kw || `${s.name}${s.student_no}`.toLowerCase().includes(kw))
       .map((s) => {
         const { counts, deduct } = termAttendDeduct(s.id, activeTerm, store.attendance, store.evaluation);
@@ -92,7 +89,7 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
       })
       .filter((r) => (scope === "done" ? r.saved !== null : scope === "todo" ? r.saved === null : true))
       .sort(compareRankSortable(sortMode, groupByClass));
-  }, [store.students, store.attendance, store.evaluation, cls, keyword, scope, activeTerm, evalByStudent, drafts, rankOf, sortMode, groupByClass]);
+  }, [store.students, store.attendance, store.evaluation, classScope, keyword, scope, activeTerm, evalByStudent, drafts, rankOf, sortMode, groupByClass]);
 
   const dirtyCount = rows.filter((r) => r.dirty).length;
   const doneCount = useMemo(() => store.students.filter((s) => evalByStudent.has(s.id)).length, [store.students, evalByStudent]);
@@ -128,7 +125,7 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
   const exportTerm = () => {
     if (rows.length === 0) return toast.error("当前范围内没有学生。");
     exportCsv(
-      `学期综合测评-${activeTerm}-${cls === ALL ? "全部班级" : cls}.csv`,
+      `学期综合测评-${activeTerm}-${classScope.cls === ALL_CLASS ? "全部班级" : classScope.cls}.csv`,
       ["名次", "学号", "姓名", "班级", "平时总评（原始）", "考勤扣分", "折算平时", "旷课", "迟到", "早退", "请假", "备注"],
       rows.map((r) => [
         r.rankRow ? `${r.rankRow.rank}/${r.rankRow.total}` : "未定",
@@ -154,9 +151,6 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
               <X className="size-4" />
             </button>
           ) : null}
-        </div>
-        <div className="w-32 sm:w-40">
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
         </div>
         <div className="w-36 sm:w-44">
           <Select value={activeTerm} onValueChange={setTerm} options={termOptions.length ? termOptions : [{ value: "", label: "暂无学期" }]} />
@@ -192,10 +186,10 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
         <RankSortControl
           mode={sortMode}
           onMode={setSortMode}
-          options={sortOptionsFor(cls === ALL, true)}
+          options={sortOptionsFor(classScope.cls === ALL_CLASS, true)}
           groupByClass={groupByClass}
           onGroupByClass={setGroupByClass}
-          showGroupToggle={cls === ALL && sortMode === "composite"}
+          showGroupToggle={classScope.cls === ALL_CLASS && sortMode === "composite"}
         />
         <span className="text-xs text-muted-foreground">
           {activeTerm || "暂无学期"} · 录入的是扣分前的原始分，考勤扣分自动折算；点「折算后」看明细 · 当前{sortCaption(sortMode, groupByClass)}，名次以已保存数据计，不受录入草稿影响

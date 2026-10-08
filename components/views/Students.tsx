@@ -42,8 +42,7 @@ import {
   type StudentPhoto,
 } from "@/lib/types";
 import { STUDENT_COLUMNS } from "@/lib/import-export";
-
-const ALL = "__all";
+import { ALL_CLASS, useClassScope, inClassScope } from "@/hooks/use-class-scope";
 
 interface StudentDraft {
   student_no: string;
@@ -163,18 +162,13 @@ function StudentFormDialog({
 export default function StudentsView({ store }: { store: Store }) {
   const { students, rooms, records } = store;
   const [q, setQ] = useState("");
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [formStudent, setFormStudent] = useState<Student | null | "new" | null>(null);
   const [importing, setImporting] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Student | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<Student | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const classOptions = useMemo(() => {
-    const set = new Set(students.map((s) => s.class_name).filter(Boolean));
-    return [{ value: ALL, label: "全部班级" }, ...[...set].sort().map((c) => ({ value: c, label: c }))];
-  }, [students]);
 
   const titlesByStudent = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -205,11 +199,11 @@ export default function StudentsView({ store }: { store: Store }) {
   const filtered = useMemo(() => {
     const keyword = q.trim().toLowerCase();
     return students.filter((s) => {
-      if (cls !== ALL && s.class_name !== cls) return false;
+      if (!inClassScope(scope, s.class_name)) return false;
       if (!keyword) return true;
       return [s.name, s.student_no, s.phone, s.major].some((v) => v.toLowerCase().includes(keyword));
     });
-  }, [students, q, cls]);
+  }, [students, q, scope]);
 
   const detail = detailId ? students.find((s) => s.id === detailId) ?? null : null;
   const detailRecords = detail
@@ -234,7 +228,9 @@ export default function StudentsView({ store }: { store: Store }) {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">学生档案</h1>
-          <p className="text-sm text-muted-foreground">共 {students.length} 名学生。</p>
+          <p className="text-sm text-muted-foreground">
+            {scope.cls === ALL_CLASS ? `共 ${students.length} 名学生。` : `${scope.cls} 共 ${filtered.length} 名学生。`}
+          </p>
         </div>
         <div className="flex shrink-0 gap-2">
           <Button variant="outline" onClick={() => setImporting(true)}>
@@ -256,9 +252,6 @@ export default function StudentsView({ store }: { store: Store }) {
             onChange={(e) => setQ(e.target.value)}
             aria-label="搜索学生"
           />
-        </div>
-        <div className="sm:w-48">
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
         </div>
       </div>
 

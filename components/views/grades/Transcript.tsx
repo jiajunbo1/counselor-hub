@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyHint, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { Student } from "@/lib/types";
 import type { Grade } from "@/lib/types";
 import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
@@ -102,7 +103,7 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
 
 export default function TranscriptView({ store, goto }: { store: Store; goto: GotoFn }) {
   const [keyword, setKeyword] = useState("");
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [term, setTerm] = useState(ALL);
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
@@ -111,10 +112,6 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
 
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
   const termOptions = useMemo(() => termOptionsOf(store.grades.map((g) => g.term)), [store.grades]);
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.students.map((s) => s.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.students]
-  );
   const evalByStudentTerm = useMemo(
     () => new Map(store.termEvals.map((e) => [`${e.student_id}|${e.term}`, e])),
     [store.termEvals]
@@ -150,7 +147,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
       const items = list
         .filter((summary) => {
           const s = summary.student;
-          if (cls !== ALL && s.class_name !== cls) return false;
+          if (!inClassScope(scope, s.class_name)) return false;
           if (kw && !`${s.name}${s.student_no}`.toLowerCase().includes(kw)) return false;
           return true;
         })
@@ -159,7 +156,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
       if (items.length > 0) out.push({ term: activeTerm, items });
     }
     return out;
-  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, cls, sortMode, groupByClass]);
+  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, scope, sortMode, groupByClass]);
 
   const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
 
@@ -207,19 +204,16 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
             </button>
           ) : null}
         </div>
-        <div className="w-32 sm:w-40">
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
-        </div>
         <div className="w-36 sm:w-44">
           <Select value={term} onValueChange={setTerm} options={termOptions} />
         </div>
         <RankSortControl
           mode={sortMode}
           onMode={setSortMode}
-          options={sortOptionsFor(cls === ALL, true)}
+          options={sortOptionsFor(scope.cls === ALL_CLASS, true)}
           groupByClass={groupByClass}
           onGroupByClass={setGroupByClass}
-          showGroupToggle={cls === ALL && sortMode === "composite"}
+          showGroupToggle={scope.cls === ALL_CLASS && sortMode === "composite"}
         />
         <span className="ml-auto text-xs text-muted-foreground">
           {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term} · 当前{sortCaption(sortMode, groupByClass)}

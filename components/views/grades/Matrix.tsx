@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { Grade } from "@/lib/types";
 import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
@@ -24,16 +25,12 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
   const terms = useMemo(() => [...new Set(store.grades.map((g) => g.term).filter(Boolean))].sort(), [store.grades]);
   const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
   const [term, setTerm] = useState<string | null>(null);
-  const [cls, setCls] = useState<string>("__all");
+  const scope = useClassScope();
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
   const activeTerm = term ?? defaultTerm;
-  const classOptions = useMemo(
-    () => [{ value: "__all", label: "全部班级" }, ...[...new Set(store.students.map((s) => s.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.students]
-  );
   const termOptions = useMemo(() => terms.map((t) => ({ value: t, label: t })), [terms]);
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
   const evalByStudentTerm = useMemo(
@@ -44,7 +41,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
   const model = useMemo(() => {
     const grades: Grade[] = store.grades.filter((g) => g.term === activeTerm);
     const inScope = new Set(grades.map((g) => g.student_id));
-    const students = store.students.filter((s) => inScope.has(s.id) && (cls === "__all" || s.class_name === cls));
+    const students = store.students.filter((s) => inScope.has(s.id) && inClassScope(scope, s.class_name));
     const studentIds = new Set(students.map((s) => s.id));
 
     const colIds = [...new Set(grades.filter((g) => studentIds.has(g.student_id)).map((g) => g.course_id))];
@@ -65,12 +62,12 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
     ranked.sort(compareRankSortable(sortMode, groupByClass));
 
     return { columns, rows: ranked };
-  }, [store.grades, store.students, store.attendance, store.evaluation, coursesById, evalByStudentTerm, activeTerm, cls, sortMode, groupByClass]);
+  }, [store.grades, store.students, store.attendance, store.evaluation, coursesById, evalByStudentTerm, activeTerm, scope, sortMode, groupByClass]);
 
   const exportMatrix = () => {
     if (model.rows.length === 0) return toast.error("当前范围内没有成绩数据。");
     exportCsv(
-      `成绩公示-${activeTerm}-${cls === "__all" ? "全部班级" : cls}.csv`,
+      `成绩公示-${activeTerm}-${scope.cls === ALL_CLASS ? "全部班级" : scope.cls}.csv`,
       ["学号", "姓名", "班级", ...model.columns.map((c) => c.name + (c.credit ? `(${c.credit})` : "")), "考试均分", "平时折算", "学期综合", "GPA", "排名"],
       model.rows.map((r) => {
         const rk = r.rankRow;
@@ -97,16 +94,13 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
         <div className="w-36 sm:w-44">
           <Select value={activeTerm} onValueChange={setTerm} options={termOptions.length ? termOptions : [{ value: "", label: "暂无学期" }]} />
         </div>
-        <div className="w-32 sm:w-40">
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
-        </div>
         <RankSortControl
           mode={sortMode}
           onMode={setSortMode}
-          options={sortOptionsFor(cls === "__all", true)}
+          options={sortOptionsFor(scope.cls === ALL_CLASS, true)}
           groupByClass={groupByClass}
           onGroupByClass={setGroupByClass}
-          showGroupToggle={cls === "__all" && sortMode === "composite"}
+          showGroupToggle={scope.cls === ALL_CLASS && sortMode === "composite"}
         />
         <Button variant="outline" size="sm" className="ml-auto" onClick={exportMatrix}>
           <Download className="size-4" /> 导出公示表

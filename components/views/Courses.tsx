@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +21,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { EmptyHint, FormField, Select } from "@/components/form";
+import { EmptyHint, FormField } from "@/components/form";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { Store } from "@/hooks/use-store";
 import type { Course } from "@/lib/types";
-
-const ALL = "__all";
 
 interface CourseDraft {
   name: string;
@@ -119,16 +118,12 @@ function CourseFormDialog({ course, onClose, store }: { course: Course | null; o
 
 export default function CoursesView({ store }: { store: Store }) {
   const { courses } = store;
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [formCourse, setFormCourse] = useState<Course | null | "new" | null>(null);
   const [deleting, setDeleting] = useState<Course | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(courses.map((c) => c.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [courses]
-  );
-  const filtered = cls === ALL ? courses : courses.filter((c) => c.class_name === cls);
+  const filtered = courses.filter((c) => inClassScope(scope, c.class_name));
 
   const confirmDelete = async () => {
     if (!deleting) return;
@@ -144,15 +139,13 @@ export default function CoursesView({ store }: { store: Store }) {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">课程管理</h1>
-          <p className="text-sm text-muted-foreground">共 {courses.length} 门课程。</p>
+          <p className="text-sm text-muted-foreground">
+            {scope.cls === ALL_CLASS ? `共 ${courses.length} 门课程。` : `${scope.cls} 共 ${filtered.length} 门课程。`}
+          </p>
         </div>
         <Button onClick={() => setFormCourse("new")}>
           <Plus className="size-4" /> <span className="hidden sm:inline">添加课程</span><span className="sm:hidden">添加</span>
         </Button>
-      </div>
-
-      <div className="sm:w-56">
-        <Select value={cls} onValueChange={setCls} options={classOptions} />
       </div>
 
       {filtered.length === 0 ? (

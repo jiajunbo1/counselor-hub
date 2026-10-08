@@ -27,6 +27,7 @@ import { EmptyHint, FormField, Select, DateInput } from "@/components/form";
 import { Switch } from "@/components/ui/switch";
 import { ALL, SegPills } from "@/components/views/grades/parts";
 import type { Store } from "@/hooks/use-store";
+import { inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { PositionItem } from "@/lib/types";
 import { POSITION_PRESETS } from "@/lib/types";
 
@@ -213,19 +214,21 @@ function PositionCard({ p, onRevoke, onToggleReport, toggling }: { p: PositionIt
 export default function PositionsView({ store }: { store: Store }) {
   const [seg, setSeg] = useState<"active" | "revoked">("active");
   const [keyword, setKeyword] = useState("");
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [titleFilter, setTitleFilter] = useState(ALL);
   const [appointing, setAppointing] = useState(false);
   const [revoking, setRevoking] = useState<PositionItem | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const active = useMemo(() => store.positions.filter((p) => p.status === "active"), [store.positions]);
-  const revoked = useMemo(() => store.positions.filter((p) => p.status === "revoked"), [store.positions]);
-
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(active.map((p) => p.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [active]
+  const active = useMemo(
+    () => store.positions.filter((p) => p.status === "active" && inClassScope(scope, p.class_name)),
+    [store.positions, scope],
   );
+  const revoked = useMemo(
+    () => store.positions.filter((p) => p.status === "revoked" && inClassScope(scope, p.class_name)),
+    [store.positions, scope],
+  );
+
   const titleOptions = useMemo(() => {
     const src = seg === "active" ? active : revoked;
     return [{ value: ALL, label: "全部职务" }, ...[...new Set(src.map((p) => p.title))].sort((a, b) => a.localeCompare(b, "zh")).map((t) => ({ value: t, label: t }))];
@@ -236,11 +239,10 @@ export default function PositionsView({ store }: { store: Store }) {
     const src = seg === "active" ? active : revoked;
     return src.filter((p) => {
       if (kw && !`${p.student_name}${p.student_no}${p.title}${p.note}`.toLowerCase().includes(kw)) return false;
-      if (cls !== ALL && p.class_name !== cls) return false;
       if (titleFilter !== ALL && p.title !== titleFilter) return false;
       return true;
     });
-  }, [seg, active, revoked, keyword, cls, titleFilter]);
+  }, [seg, active, revoked, keyword, titleFilter]);
 
   const byClass = useMemo(() => {
     const m = new Map<string, PositionItem[]>();
@@ -301,11 +303,6 @@ export default function PositionsView({ store }: { store: Store }) {
             </button>
           ) : null}
         </div>
-        {seg === "active" ? (
-          <div className="w-32 sm:w-40">
-            <Select value={cls} onValueChange={setCls} options={classOptions} />
-          </div>
-        ) : null}
         <div className="w-32 sm:w-40">
           <Select value={titleFilter} onValueChange={setTitleFilter} options={titleOptions} />
         </div>

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import { RECORD_TYPE_LABEL, studentName, type RecordItem } from "@/lib/types";
 import type { TabId } from "@/components/AppShell";
 
@@ -45,23 +46,30 @@ function PendingLeaveRow({ record, store, onNavigate }: { record: RecordItem; st
 }
 
 export default function OverviewView({ store, onNavigate }: { store: Store; onNavigate: (tab: TabId) => void }) {
+  const scope = useClassScope();
   const { students, records, rooms, courses, grades } = store;
+  const scopedStudents = useMemo(() => students.filter((s) => inClassScope(scope, s.class_name)), [students, scope]);
+  const classById = useMemo(() => new Map(students.map((s) => [s.id, s.class_name])), [students]);
+  const recInScope = (studentId: string) => scope.cls === ALL_CLASS || classById.get(studentId) === scope.cls;
+  // 宿舍是楼栋口径、无班级概念，入住率保持全局；其余统计跟随班级作用域
   const bedsTotal = rooms.reduce((sum, r) => sum + r.capacity, 0);
   const bedsUsed = students.filter((s) => s.dorm_room_id).length;
-  const pendingLeaves = records.filter((r) => r.type === "leave" && r.status === "pending");
-  const unassigned = students.filter((s) => !s.dorm_room_id);
-  const recent = records.slice(0, 6);
-  const failGrades = useMemo(() => grades.filter((g) => Number(g.score) < PASS_SCORE), [grades]);
+  const pendingLeaves = records.filter((r) => r.type === "leave" && r.status === "pending" && recInScope(r.student_id));
+  const unassigned = scopedStudents.filter((s) => !s.dorm_room_id);
+  const recent = useMemo(() => records.filter((r) => recInScope(r.student_id)).slice(0, 6), [records, classById, scope]);
+  const failGrades = useMemo(() => grades.filter((g) => Number(g.score) < PASS_SCORE && inClassScope(scope, g.class_name)), [grades, scope]);
+  const scopedCourseCount = courses.filter((c) => inClassScope(scope, c.class_name)).length;
 
   const classSizes = useMemo(() => {
     const map = new Map<string, number>();
-    for (const s of students) map.set(s.class_name || "未分班", (map.get(s.class_name || "未分班") ?? 0) + 1);
+    for (const s of scopedStudents) map.set(s.class_name || "未分班", (map.get(s.class_name || "未分班") ?? 0) + 1);
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }));
-  }, [students]);
+  }, [scopedStudents]);
 
   const courseAverages = useMemo(() => {
     const map = new Map<string, { sum: number; n: number }>();
     for (const g of grades) {
+      if (!inClassScope(scope, g.class_name)) continue;
       const cur = map.get(g.course_name) ?? { sum: 0, n: 0 };
       cur.sum += Number(g.score);
       cur.n += 1;
@@ -71,20 +79,22 @@ export default function OverviewView({ store, onNavigate }: { store: Store; onNa
       .map(([label, { sum, n }]) => ({ label, value: Math.round((sum / n) * 10) / 10 }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
-  }, [grades]);
+  }, [grades, scope]);
 
   const stats = [
-    { label: "学生总数", value: students.length, tab: "students" as TabId },
+    { label: "学生总数", value: scopedStudents.length, tab: "students" as TabId },
     { label: "宿舍入住", value: `${bedsUsed}/${bedsTotal}`, tab: "dorms" as TabId },
     { label: "待审批请假", value: pendingLeaves.length, tab: "leaves" as TabId },
-    { label: "课程数", value: courses.length, tab: "courses" as TabId },
+    { label: "课程数", value: scopedCourseCount, tab: "courses" as TabId },
     { label: "不及格成绩", value: failGrades.length, tab: "grades" as TabId },
   ];
 
   return (
     <section className="space-y-5">
       <div>
-        <h1 className="text-lg font-bold">工作总览</h1>
+        <h1 className="text-lg font-bold">
+          工作总览{scope.cls !== ALL_CLASS ? <span className="text-muted-foreground"> · {scope.cls}</span> : null}
+        </h1>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s) => (

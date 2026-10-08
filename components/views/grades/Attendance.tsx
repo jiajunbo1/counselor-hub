@@ -32,6 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { AttendanceItem, AttendKind, Student } from "@/lib/types";
 import { ATTEND_KIND_LABEL, ATTEND_SOURCE_LABEL } from "@/lib/types";
 import { dedupeAttendance, gradesOfTerm, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
@@ -219,7 +220,7 @@ export function RulesDialog({ store, onClose }: { store: Store; onClose: () => v
 
 export default function AttendanceView({ store, focusNo, focusTerm }: { store: Store; focusNo?: string; focusTerm?: string }) {
   const [keyword, setKeyword] = useState(focusNo ?? "");
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [term, setTerm] = useState(focusTerm ?? ALL);
   const [kind, setKind] = useState(ALL);
   const [view, setView] = useState<"summary" | "detail">("summary");
@@ -231,10 +232,6 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
   const [deleting, setDeleting] = useState<AttendanceItem | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.attendance.map((a) => a.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.attendance]
-  );
   const termOptions = useMemo(() => {
     const uniq = [...new Set(store.attendance.map((a) => a.term).filter(Boolean))];
     if (focusTerm) uniq.push(focusTerm);
@@ -249,12 +246,12 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
     const kw = keyword.trim().toLowerCase();
     return store.attendance.filter((a) => {
       if (kw && !`${a.student_name}${a.student_no}${a.course_name}${a.note}`.toLowerCase().includes(kw)) return false;
-      if (cls !== ALL && a.class_name !== cls) return false;
+      if (!inClassScope(scope, a.class_name)) return false;
       if (term !== ALL && a.term !== term) return false;
       if (kind !== ALL && a.kind !== kind) return false;
       return true;
     });
-  }, [store.attendance, keyword, cls, term, kind]);
+  }, [store.attendance, keyword, scope, term, kind]);
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -318,7 +315,7 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
   const exportSummary = () => {
     if (summaryRows.length === 0) return toast.error("当前范围内没有考勤记录。");
     exportCsv(
-      `考勤按人汇总-${cls === ALL ? "全部班级" : cls}-${term === ALL ? "全部学期" : term}.csv`,
+      `考勤按人汇总-${scope.cls === ALL_CLASS ? "全部班级" : scope.cls}-${term === ALL ? "全部学期" : term}.csv`,
       ["名次", "学号", "姓名", "班级", "学期", "旷课", "迟到", "早退", "请假", "本学期扣分", "学期综合", "本次筛选条数"],
       summaryRows.map((r) => [
         r.rankRow ? `${r.rankRow.rank}/${r.rankRow.total}` : "未定",
@@ -370,9 +367,6 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
             </button>
           ) : null}
         </div>
-        <div className="w-28 sm:w-36">
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
-        </div>
         <div className="w-32 sm:w-40">
           <Select value={term} onValueChange={setTerm} options={termOptions} />
         </div>
@@ -414,10 +408,10 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
           <RankSortControl
             mode={sortMode}
             onMode={setSortMode}
-            options={sortOptionsFor(cls === ALL, true)}
+            options={sortOptionsFor(scope.cls === ALL_CLASS, true)}
             groupByClass={groupByClass}
             onGroupByClass={setGroupByClass}
-            showGroupToggle={cls === ALL && sortMode === "composite"}
+            showGroupToggle={scope.cls === ALL_CLASS && sortMode === "composite"}
           />
         ) : null}
         {view === "summary" ? (

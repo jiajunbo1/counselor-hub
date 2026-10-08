@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { Grade } from "@/lib/types";
 import { GRADE_COLUMNS, normalizeDate } from "@/lib/import-export";
 import TranscriptView from "./grades/Transcript";
@@ -148,7 +149,7 @@ function GradeFormDialog({ grade, onClose, store }: { grade: Grade | null; onClo
 function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; goto: GotoFn; focusNo?: string; focusTerm?: string }) {
   const { grades, courses } = store;
   const [keyword, setKeyword] = useState(focusNo ?? "");
-  const [cls, setCls] = useState(ALL);
+  const scope = useClassScope();
   const [courseId, setCourseId] = useState(ALL);
   const [term, setTerm] = useState(focusTerm ?? ALL);
   const [minScore, setMinScore] = useState("");
@@ -162,10 +163,6 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(grades.map((g) => g.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [grades]
-  );
   const courseOptions = useMemo(
     () => [{ value: ALL, label: "全部课程" }, ...courses.map((c) => ({ value: c.id, label: c.name }))],
     [courses]
@@ -182,7 +179,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
     let list = grades.filter((g) => {
       const n = Number(g.score);
       if (kw && !`${g.student_name}${g.student_no}${g.course_name}`.toLowerCase().includes(kw)) return false;
-      if (cls !== ALL && g.class_name !== cls) return false;
+      if (!inClassScope(scope, g.class_name)) return false;
       if (courseId !== ALL && g.course_id !== courseId) return false;
       if (term !== ALL && g.term !== term) return false;
       if (min !== null && !Number.isNaN(min) && n < min) return false;
@@ -201,7 +198,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
       return sortAsc ? r : -r;
     });
     return list;
-  }, [grades, keyword, cls, courseId, term, minScore, maxScore, failOnly, sortKey, sortAsc]);
+  }, [grades, keyword, scope, courseId, term, minScore, maxScore, failOnly, sortKey, sortAsc]);
 
   const stats = useMemo(() => {
     if (filtered.length === 0) return null;
@@ -214,11 +211,11 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
   }, [filtered]);
 
   const resetFilters = () => {
-    setKeyword(""); setCls(ALL); setCourseId(ALL); setTerm(ALL);
+    setKeyword(""); setCourseId(ALL); setTerm(ALL);
     setMinScore(""); setMaxScore(""); setFailOnly(false);
   };
   const hasFilter =
-    keyword !== "" || cls !== ALL || courseId !== ALL || term !== ALL ||
+    keyword !== "" || courseId !== ALL || term !== ALL ||
     minScore !== "" || maxScore !== "" || failOnly;
 
   const confirmDelete = async () => {
@@ -249,7 +246,6 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
             placeholder="搜索姓名 / 学号 / 课程"
             className="sm:col-span-1"
           />
-          <Select value={cls} onValueChange={setCls} options={classOptions} />
           <Select value={courseId} onValueChange={setCourseId} options={courseOptions} />
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -402,7 +398,33 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
 export default function GradesView({ store }: { store: Store }) {
   const [nav, setNav] = useState<{ seg: string; no?: string; term?: string; stamp: number }>({ seg: "transcript", stamp: 0 });
   const goto: GotoFn = (seg, opts) => setNav((n) => ({ seg, no: opts?.no, term: opts?.term, stamp: n.stamp + 1 }));
-  const failCount = useMemo(() => store.grades.filter((g) => Number(g.score) < PASS_SCORE).length, [store.grades]);
+  const scope = useClassScope();
+  const classById = useMemo(
+    () => new Map(store.students.map((s) => [s.id, s.class_name])),
+    [store.students],
+  );
+  const gradesCount = useMemo(
+    () => store.grades.filter((g) => inClassScope(scope, g.class_name)).length,
+    [store.grades, scope],
+  );
+  const termEvalCount = useMemo(
+    () =>
+      store.termEvals.filter(
+        (e) => scope.cls === ALL_CLASS || classById.get(e.student_id) === scope.cls,
+      ).length,
+    [store.termEvals, scope, classById],
+  );
+  const attendanceCount = useMemo(
+    () => store.attendance.filter((a) => inClassScope(scope, a.class_name)).length,
+    [store.attendance, scope],
+  );
+  const failCount = useMemo(
+    () =>
+      store.grades.filter(
+        (g) => inClassScope(scope, g.class_name) && Number(g.score) < PASS_SCORE,
+      ).length,
+    [store.grades, scope],
+  );
 
   return (
     <section className="space-y-4">
@@ -410,7 +432,7 @@ export default function GradesView({ store }: { store: Store }) {
         <div>
           <h1 className="text-lg font-bold">成绩与综合测评</h1>
           <p className="text-sm text-muted-foreground">
-            {store.grades.length} 条成绩 · {store.termEvals.length} 条学期总评 · {store.attendance.length} 条考勤 · {failCount > 0 ? `${failCount} 条不及格` : "无不及格记录"}。
+            {gradesCount} 条成绩 · {termEvalCount} 条学期总评 · {attendanceCount} 条考勤 · {failCount > 0 ? `${failCount} 条不及格` : "无不及格记录"}。
           </p>
         </div>
       </div>
@@ -421,9 +443,9 @@ export default function GradesView({ store }: { store: Store }) {
             options={[
               { value: "transcript", label: "成绩单" },
               { value: "matrix", label: "报表矩阵" },
-              { value: "list", label: "成绩清单", count: store.grades.length },
-              { value: "term_eval", label: "综合测评", count: store.termEvals.length },
-              { value: "attendance", label: "考勤台账", count: store.attendance.length },
+              { value: "list", label: "成绩清单", count: gradesCount },
+              { value: "term_eval", label: "综合测评", count: termEvalCount },
+              { value: "attendance", label: "考勤台账", count: attendanceCount },
             ]}
             value={nav.seg}
             onChange={(s) => goto(s)}

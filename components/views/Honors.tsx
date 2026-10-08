@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Medal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ import { rankRowsByClass, type RankRow } from "@/lib/rank-view";
 import { summarizeTerm, PASS_SCORE, type TermSummary } from "@/lib/evaluation";
 import { HONOR_LEVELS, HONOR_PRESETS, type HonorItem, type Student } from "@/lib/types";
 import type { Store } from "@/hooks/use-store";
+import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const CUSTOM = "__custom";
@@ -325,22 +326,24 @@ function LedgerPanel({ store }: { store: Store }) {
   const [keyword, setKeyword] = useState("");
   const [term, setTerm] = useState<string>(ALL);
   const [level, setLevel] = useState<string>(ALL);
-  const [cls, setCls] = useState<string>(ALL);
+  const scope = useClassScope();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<HonorItem | null>(null);
   const [revoking, setRevoking] = useState<HonorItem | null>(null);
   const [deleting, setDeleting] = useState<HonorItem | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const active = useMemo(() => store.honors.filter((h) => h.status === "active"), [store.honors]);
-  const revoked = useMemo(() => store.honors.filter((h) => h.status === "revoked"), [store.honors]);
+  const active = useMemo(
+    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name)),
+    [store.honors, scope],
+  );
+  const revoked = useMemo(
+    () => store.honors.filter((h) => h.status === "revoked" && inClassScope(scope, h.class_name)),
+    [store.honors, scope],
+  );
 
   const termOptions = useMemo(() => [{ value: ALL, label: "全部学期" }, ...honorTermsOf(store.honors).map((t) => ({ value: t, label: t }))], [store.honors]);
   const levelOptions = useMemo(() => [{ value: ALL, label: "全部级别" }, ...HONOR_LEVELS.map((l) => ({ value: l, label: l }))], []);
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.honors.map((h) => h.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.honors]
-  );
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -349,10 +352,9 @@ function LedgerPanel({ store }: { store: Store }) {
       if (kw && !`${h.student_name}${h.student_no}${h.title}${h.note}`.toLowerCase().includes(kw)) return false;
       if (term !== ALL && h.term !== term) return false;
       if (level !== ALL && h.level !== level) return false;
-      if (cls !== ALL && h.class_name !== cls) return false;
       return true;
     });
-  }, [status, active, revoked, keyword, term, level, cls]);
+  }, [status, active, revoked, keyword, term, level]);
 
   const exportLedger = () => {
     if (filtered.length === 0) return toast.error("当前筛选没有荣誉记录。");
@@ -421,7 +423,6 @@ function LedgerPanel({ store }: { store: Store }) {
         </div>
         <div className="w-32 sm:w-40"><Select value={term} onValueChange={setTerm} options={termOptions} /></div>
         <div className="w-28 sm:w-32"><Select value={level} onValueChange={setLevel} options={levelOptions} /></div>
-        <div className="w-32 sm:w-40"><Select value={cls} onValueChange={setCls} options={classOptions} /></div>
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length} 条</span>
       </div>
 
@@ -545,12 +546,15 @@ function GrantPanel({ store }: { store: Store }) {
   const [topN, setTopN] = useState("3");
   const [topPct, setTopPct] = useState("20");
   const [minScore, setMinScore] = useState("85");
-  const [cls, setCls] = useState<string>(ALL);
+  const scope = useClassScope();
   const [includeHistoryFail, setIncludeHistoryFail] = useState(false);
   const [allowFailed, setAllowFailed] = useState(false);
   const [showExcluded, setShowExcluded] = useState(false);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // 侧栏切换班级作用域后，之前勾过的人可能已不在当前范围，清空勾选避免误授
+  useEffect(() => setPicked(null), [scope.cls]);
 
   const allFails = useGradeFails(store);
   const scopeLabel = includeHistoryFail ? "本学期/历史学期" : "本学期";
@@ -565,25 +569,20 @@ function GrantPanel({ store }: { store: Store }) {
     [store.honors, name, activeTerm]
   );
 
-  const classOptions = useMemo(
-    () => [{ value: ALL, label: "全部班级" }, ...[...new Set(store.students.map((s) => s.class_name).filter(Boolean))].sort().map((c) => ({ value: c, label: c }))],
-    [store.students]
-  );
-
-  /** 圈选在班内名次上进行，故先算全学期名次再按班级筛选，避免筛选改变名次分母 */
+  /** 圈选在班内名次上进行，故先算全学期名次再按班级作用域筛选，避免筛选改变名次分母 */
   const matched = useMemo(() => {
     const n = Number(topN);
     const pct = Number(topPct);
     const floor = Number(minScore);
     return rows.filter((r) => {
-      if (cls !== ALL && r.student.class_name !== cls) return false;
+      if (!inClassScope(scope, r.student.class_name)) return false;
       const rk = r.rankRow;
       if (!rk) return false;
       if (mode === "top_n") return Number.isInteger(n) && n > 0 && rk.rank <= n;
       if (mode === "top_pct") return Number.isFinite(pct) && pct > 0 && pct <= 100 && rk.rank <= Math.max(1, Math.ceil((rk.total * pct) / 100));
       return Number.isFinite(floor) && rk.composite !== null && rk.composite >= floor;
     });
-  }, [rows, cls, mode, topN, topPct, minScore]);
+  }, [rows, scope, mode, topN, topPct, minScore]);
 
   /** 挂科一票否决：不满足条件与否先看挂科，两种口径下都从名单里剔除，除非本次显式放开 */
   const blocked = useMemo(() => {
@@ -667,7 +666,12 @@ function GrantPanel({ store }: { store: Store }) {
             <Select value={level} onValueChange={setLevel} options={HONOR_LEVELS.map((l) => ({ value: l, label: l }))} />
           </FormField>
           <FormField label="班级范围">
-            <Select value={cls} onValueChange={(v) => { setCls(v); setPicked(null); }} options={classOptions} />
+            <div className="flex h-9 items-center justify-between rounded-md border bg-muted/40 px-3 text-sm">
+              <span className={scope.cls === ALL_CLASS ? "text-muted-foreground" : "font-medium"}>
+                {scope.cls === ALL_CLASS ? "全部班级（各班独立取名次）" : scope.cls}
+              </span>
+              <span className="text-[11px] text-muted-foreground">跟随左侧班级</span>
+            </div>
           </FormField>
         </div>
         <FormField label="圈选方式">
@@ -842,7 +846,11 @@ function GrantPanel({ store }: { store: Store }) {
 
 export default function HonorsView({ store }: { store: Store }) {
   const [view, setView] = useState<View>("ledger");
-  const activeCount = useMemo(() => store.honors.filter((h) => h.status === "active").length, [store.honors]);
+  const scope = useClassScope();
+  const activeCount = useMemo(
+    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name)).length,
+    [store.honors, scope],
+  );
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
