@@ -2,15 +2,15 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { termNow, useTermScope } from "@/hooks/use-term-scope";
 import type { Grade } from "@/lib/types";
 import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
 import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
 import { exportCsv } from "@/lib/import-export";
-import { evalFormulaNote, fmt1, HOT_CLASS, ScoreCell } from "./parts";
+import { ALL, evalFormulaNote, fmt1, HOT_CLASS, ScoreCell } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
 function HotValue({ children, onClick }: { children: ReactNode; onClick: () => void }) {
@@ -23,15 +23,16 @@ function HotValue({ children, onClick }: { children: ReactNode; onClick: () => v
 
 export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn }) {
   const terms = useMemo(() => [...new Set(store.grades.map((g) => g.term).filter(Boolean))].sort(), [store.grades]);
-  const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
-  const [term, setTerm] = useState<string | null>(null);
+  const latestTerm = terms.length > 0 ? terms[terms.length - 1] : "";
+  // 学期跟随侧栏全局作用域；矩阵只能展示单学期，「全部学期」时给出提示
+  const termScope = useTermScope();
+  const term = termNow(termScope);
   const scope = useClassScope();
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
-  const activeTerm = term ?? defaultTerm;
-  const termOptions = useMemo(() => terms.map((t) => ({ value: t, label: t })), [terms]);
+  const activeTerm = term === ALL ? "" : term;
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
   const evalByStudentTerm = useMemo(
     () => new Map(store.termEvals.map((e) => [`${e.student_id}|${e.term}`, e])),
@@ -91,9 +92,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="w-36 sm:w-44">
-          <Select value={activeTerm} onValueChange={setTerm} options={termOptions.length ? termOptions : [{ value: "", label: "暂无学期" }]} />
-        </div>
+        {term !== ALL ? <span className="text-xs font-semibold text-muted-foreground">{term}</span> : null}
         <RankSortControl
           mode={sortMode}
           onMode={setSortMode}
@@ -107,7 +106,16 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
         </Button>
       </div>
 
-      {model.rows.length === 0 ? (
+      {term === ALL ? (
+        <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground shadow-xs">
+          报表矩阵一次只展示一个学期，请在左侧「当前学期」选定具体学期。
+          {latestTerm ? (
+            <Button variant="outline" size="sm" onClick={() => termScope.setTerm(latestTerm)}>
+              跳到最新学期（{latestTerm}）
+            </Button>
+          ) : null}
+        </div>
+      ) : model.rows.length === 0 ? (
         <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground shadow-xs">
           该学期/班级还没有成绩记录，请到「成绩清单」录入或导入。
         </div>

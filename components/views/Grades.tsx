@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { inTermScope, useTermScope } from "@/hooks/use-term-scope";
 import type { Grade } from "@/lib/types";
 import { GRADE_COLUMNS, normalizeDate } from "@/lib/import-export";
 import TranscriptView from "./grades/Transcript";
@@ -146,12 +147,12 @@ function GradeFormDialog({ grade, onClose, store }: { grade: Grade | null; onClo
   );
 }
 
-function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; goto: GotoFn; focusNo?: string; focusTerm?: string }) {
+function GradesListView({ store, goto, focusNo }: { store: Store; goto: GotoFn; focusNo?: string }) {
   const { grades, courses } = store;
   const [keyword, setKeyword] = useState(focusNo ?? "");
   const scope = useClassScope();
+  const termScope = useTermScope();
   const [courseId, setCourseId] = useState(ALL);
-  const [term, setTerm] = useState(focusTerm ?? ALL);
   const [minScore, setMinScore] = useState("");
   const [maxScore, setMaxScore] = useState("");
   const [failOnly, setFailOnly] = useState(false);
@@ -167,10 +168,6 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
     () => [{ value: ALL, label: "全部课程" }, ...courses.map((c) => ({ value: c.id, label: c.name }))],
     [courses]
   );
-  const termOptions = useMemo(
-    () => [{ value: ALL, label: "全部学期" }, ...[...new Set(grades.map((g) => g.term).filter(Boolean))].sort().map((t) => ({ value: t, label: t }))],
-    [grades]
-  );
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -181,7 +178,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
       if (kw && !`${g.student_name}${g.student_no}${g.course_name}`.toLowerCase().includes(kw)) return false;
       if (!inClassScope(scope, g.class_name)) return false;
       if (courseId !== ALL && g.course_id !== courseId) return false;
-      if (term !== ALL && g.term !== term) return false;
+      if (!inTermScope(termScope, g.term)) return false;
       if (min !== null && !Number.isNaN(min) && n < min) return false;
       if (max !== null && !Number.isNaN(max) && n > max) return false;
       if (failOnly && n >= PASS_SCORE) return false;
@@ -198,7 +195,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
       return sortAsc ? r : -r;
     });
     return list;
-  }, [grades, keyword, scope, courseId, term, minScore, maxScore, failOnly, sortKey, sortAsc]);
+  }, [grades, keyword, scope, courseId, termScope, minScore, maxScore, failOnly, sortKey, sortAsc]);
 
   const stats = useMemo(() => {
     if (filtered.length === 0) return null;
@@ -211,11 +208,11 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
   }, [filtered]);
 
   const resetFilters = () => {
-    setKeyword(""); setCourseId(ALL); setTerm(ALL);
+    setKeyword(""); setCourseId(ALL);
     setMinScore(""); setMaxScore(""); setFailOnly(false);
   };
   const hasFilter =
-    keyword !== "" || courseId !== ALL || term !== ALL ||
+    keyword !== "" || courseId !== ALL ||
     minScore !== "" || maxScore !== "" || failOnly;
 
   const confirmDelete = async () => {
@@ -248,8 +245,7 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
           />
           <Select value={courseId} onValueChange={setCourseId} options={courseOptions} />
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Select value={term} onValueChange={setTerm} options={termOptions} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Input value={minScore} onChange={(e) => setMinScore(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="最低分" maxLength={5} />
           <Input value={maxScore} onChange={(e) => setMaxScore(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="最高分" maxLength={5} />
           <Button
@@ -396,34 +392,39 @@ function GradesListView({ store, goto, focusNo, focusTerm }: { store: Store; got
 }
 
 export default function GradesView({ store }: { store: Store }) {
-  const [nav, setNav] = useState<{ seg: string; no?: string; term?: string; stamp: number }>({ seg: "transcript", stamp: 0 });
-  const goto: GotoFn = (seg, opts) => setNav((n) => ({ seg, no: opts?.no, term: opts?.term, stamp: n.stamp + 1 }));
+  const [nav, setNav] = useState<{ seg: string; no?: string; stamp: number }>({ seg: "transcript", stamp: 0 });
+  const termScope = useTermScope();
+  const goto: GotoFn = (seg, opts) => {
+    // 跨屏跳转带的学期直接写全局学期作用域，视图不再各自持有学期
+    if (opts?.term) termScope.setTerm(opts.term);
+    setNav((n) => ({ seg, no: opts?.no, stamp: n.stamp + 1 }));
+  };
   const scope = useClassScope();
   const classById = useMemo(
     () => new Map(store.students.map((s) => [s.id, s.class_name])),
     [store.students],
   );
   const gradesCount = useMemo(
-    () => store.grades.filter((g) => inClassScope(scope, g.class_name)).length,
-    [store.grades, scope],
+    () => store.grades.filter((g) => inClassScope(scope, g.class_name) && inTermScope(termScope, g.term)).length,
+    [store.grades, scope, termScope],
   );
   const termEvalCount = useMemo(
     () =>
       store.termEvals.filter(
-        (e) => scope.cls === ALL_CLASS || classById.get(e.student_id) === scope.cls,
+        (e) => (scope.cls === ALL_CLASS || classById.get(e.student_id) === scope.cls) && inTermScope(termScope, e.term),
       ).length,
-    [store.termEvals, scope, classById],
+    [store.termEvals, scope, classById, termScope],
   );
   const attendanceCount = useMemo(
-    () => store.attendance.filter((a) => inClassScope(scope, a.class_name)).length,
-    [store.attendance, scope],
+    () => store.attendance.filter((a) => inClassScope(scope, a.class_name) && inTermScope(termScope, a.term)).length,
+    [store.attendance, scope, termScope],
   );
   const failCount = useMemo(
     () =>
       store.grades.filter(
-        (g) => inClassScope(scope, g.class_name) && Number(g.score) < PASS_SCORE,
+        (g) => inClassScope(scope, g.class_name) && inTermScope(termScope, g.term) && Number(g.score) < PASS_SCORE,
       ).length,
-    [store.grades, scope],
+    [store.grades, scope, termScope],
   );
 
   return (
@@ -455,9 +456,9 @@ export default function GradesView({ store }: { store: Store }) {
 
       {nav.seg === "transcript" ? <TranscriptView key={`t${nav.stamp}`} store={store} goto={goto} /> : null}
       {nav.seg === "matrix" ? <MatrixView key={`m${nav.stamp}`} store={store} goto={goto} /> : null}
-      {nav.seg === "list" ? <GradesListView key={`l${nav.stamp}`} store={store} goto={goto} focusNo={nav.no} focusTerm={nav.term} /> : null}
-      {nav.seg === "term_eval" ? <TermEvalView key={`e${nav.stamp}`} store={store} goto={goto} focusNo={nav.no} focusTerm={nav.term} /> : null}
-      {nav.seg === "attendance" ? <AttendanceView key={`a${nav.stamp}`} store={store} focusNo={nav.no} focusTerm={nav.term} /> : null}
+      {nav.seg === "list" ? <GradesListView key={`l${nav.stamp}`} store={store} goto={goto} focusNo={nav.no} /> : null}
+      {nav.seg === "term_eval" ? <TermEvalView key={`e${nav.stamp}`} store={store} goto={goto} focusNo={nav.no} /> : null}
+      {nav.seg === "attendance" ? <AttendanceView key={`a${nav.stamp}`} store={store} focusNo={nav.no} /> : null}
     </section>
   );
 }

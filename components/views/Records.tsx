@@ -408,7 +408,8 @@ function RecordsList({ store, member, mode }: { store: Store; member: MemberUser
   const focusStudent = matchIds && matchIds.size === 1 ? students.find((s) => matchIds.has(s.id)) ?? null : null;
   const inScope = (id: string) => {
     if (matchIds && !matchIds.has(id)) return false;
-    if (scope.cls !== ALL_CLASS && classById.get(id) !== scope.cls) return false;
+    // 请假是总览级事务，不跟随侧栏班级选择；记录（谈话/表彰/惩戒）仍按班级过滤
+    if (!isLeaveView && scope.cls !== ALL_CLASS && classById.get(id) !== scope.cls) return false;
     return true;
   };
   const [form, setForm] = useState<{ record: RecordItem | null; preset?: string; presetType?: RecordType } | null>(null);

@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { ALL_TERM, termNow, useTermScope } from "@/hooks/use-term-scope";
 import type { AttendanceItem, AttendKind, Student } from "@/lib/types";
 import { ATTEND_KIND_LABEL, ATTEND_SOURCE_LABEL } from "@/lib/types";
 import { dedupeAttendance, gradesOfTerm, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
@@ -218,10 +219,12 @@ export function RulesDialog({ store, onClose }: { store: Store; onClose: () => v
   );
 }
 
-export default function AttendanceView({ store, focusNo, focusTerm }: { store: Store; focusNo?: string; focusTerm?: string }) {
+export default function AttendanceView({ store, focusNo }: { store: Store; focusNo?: string }) {
   const [keyword, setKeyword] = useState(focusNo ?? "");
   const scope = useClassScope();
-  const [term, setTerm] = useState(focusTerm ?? ALL);
+  // 学期跟随侧栏全局作用域（ALL=不限学期，跨学期行同表展示）
+  const termScope = useTermScope();
+  const term = termNow(termScope);
   const [kind, setKind] = useState(ALL);
   const [view, setView] = useState<"summary" | "detail">("summary");
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
@@ -232,11 +235,6 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
   const [deleting, setDeleting] = useState<AttendanceItem | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const termOptions = useMemo(() => {
-    const uniq = [...new Set(store.attendance.map((a) => a.term).filter(Boolean))];
-    if (focusTerm) uniq.push(focusTerm);
-    return [{ value: ALL, label: "全部学期" }, ...[...new Set(uniq)].sort().map((t) => ({ value: t, label: t }))];
-  }, [store.attendance, focusTerm]);
   const kindOptions = [
     { value: ALL, label: "全部类型" },
     ...(Object.entries(ATTEND_KIND_LABEL) as [AttendKind, string][]).map(([value, label]) => ({ value, label })),
@@ -367,9 +365,6 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
             </button>
           ) : null}
         </div>
-        <div className="w-32 sm:w-40">
-          <Select value={term} onValueChange={setTerm} options={termOptions} />
-        </div>
         <div className="ml-auto flex shrink-0 gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowRules(true)}>
             <Settings2 className="size-4" /> <span className="hidden sm:inline">规则设置</span>
@@ -477,7 +472,7 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
                         className="text-xs text-primary"
                         onClick={() => {
                           setKeyword(r.student.student_no);
-                          setTerm(r.term || ALL);
+                          termScope.setTerm(r.term || ALL_TERM);
                           setKind(ALL);
                           setView("detail");
                         }}

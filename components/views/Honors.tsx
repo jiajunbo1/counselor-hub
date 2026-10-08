@@ -32,6 +32,7 @@ import { summarizeTerm, PASS_SCORE, type TermSummary } from "@/lib/evaluation";
 import { HONOR_LEVELS, HONOR_PRESETS, type HonorItem, type Student } from "@/lib/types";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { ALL_TERM, inTermScope, termNow, useTermScope } from "@/hooks/use-term-scope";
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const CUSTOM = "__custom";
@@ -324,9 +325,10 @@ function HonorFormDialog({
 function LedgerPanel({ store }: { store: Store }) {
   const [status, setStatus] = useState<"active" | "revoked">("active");
   const [keyword, setKeyword] = useState("");
-  const [term, setTerm] = useState<string>(ALL);
   const [level, setLevel] = useState<string>(ALL);
   const scope = useClassScope();
+  // 学期跟随侧栏全局作用域（ALL=全部学期，未标学期的荣誉也只在 ALL 下出现）
+  const termScope = useTermScope();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<HonorItem | null>(null);
   const [revoking, setRevoking] = useState<HonorItem | null>(null);
@@ -334,15 +336,14 @@ function LedgerPanel({ store }: { store: Store }) {
   const [busy, setBusy] = useState(false);
 
   const active = useMemo(
-    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name)),
-    [store.honors, scope],
+    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name) && inTermScope(termScope, h.term)),
+    [store.honors, scope, termScope],
   );
   const revoked = useMemo(
-    () => store.honors.filter((h) => h.status === "revoked" && inClassScope(scope, h.class_name)),
-    [store.honors, scope],
+    () => store.honors.filter((h) => h.status === "revoked" && inClassScope(scope, h.class_name) && inTermScope(termScope, h.term)),
+    [store.honors, scope, termScope],
   );
 
-  const termOptions = useMemo(() => [{ value: ALL, label: "全部学期" }, ...honorTermsOf(store.honors).map((t) => ({ value: t, label: t }))], [store.honors]);
   const levelOptions = useMemo(() => [{ value: ALL, label: "全部级别" }, ...HONOR_LEVELS.map((l) => ({ value: l, label: l }))], []);
 
   const filtered = useMemo(() => {
@@ -350,11 +351,10 @@ function LedgerPanel({ store }: { store: Store }) {
     const src = status === "active" ? active : revoked;
     return src.filter((h) => {
       if (kw && !`${h.student_name}${h.student_no}${h.title}${h.note}`.toLowerCase().includes(kw)) return false;
-      if (term !== ALL && h.term !== term) return false;
       if (level !== ALL && h.level !== level) return false;
       return true;
     });
-  }, [status, active, revoked, keyword, term, level]);
+  }, [status, active, revoked, keyword, level]);
 
   const exportLedger = () => {
     if (filtered.length === 0) return toast.error("当前筛选没有荣誉记录。");
@@ -421,7 +421,6 @@ function LedgerPanel({ store }: { store: Store }) {
             </button>
           ) : null}
         </div>
-        <div className="w-32 sm:w-40"><Select value={term} onValueChange={setTerm} options={termOptions} /></div>
         <div className="w-28 sm:w-32"><Select value={level} onValueChange={setLevel} options={levelOptions} /></div>
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length} 条</span>
       </div>
@@ -534,8 +533,11 @@ function LedgerPanel({ store }: { store: Store }) {
 
 function GrantPanel({ store }: { store: Store }) {
   const gradeTerms = useMemo(() => [...new Set(store.grades.map((g) => g.term).filter(Boolean))].sort(), [store.grades]);
-  const [term, setTerm] = useState<string | null>(null);
-  const activeTerm = term ?? (gradeTerms.length ? gradeTerms[gradeTerms.length - 1] : "");
+  const latestGradeTerm = gradeTerms.length ? gradeTerms[gradeTerms.length - 1] : "";
+  // 学期跟随侧栏全局作用域；授予一次只针对一个学期，「全部学期」时提示选定
+  const termScope = useTermScope();
+  const term = termNow(termScope);
+  const activeTerm = term === ALL_TERM ? "" : term;
   const rows = useTermRows(store, activeTerm);
 
   const [title, setTitle] = useState<string>(HONOR_PRESETS[0]);
@@ -553,8 +555,8 @@ function GrantPanel({ store }: { store: Store }) {
   const [picked, setPicked] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // 侧栏切换班级作用域后，之前勾过的人可能已不在当前范围，清空勾选避免误授
-  useEffect(() => setPicked(null), [scope.cls]);
+  // 班级/学期作用域变化后，之前勾过的人可能已不在当前范围，清空勾选避免误授
+  useEffect(() => setPicked(null), [scope.cls, term]);
 
   const allFails = useGradeFails(store);
   const scopeLabel = includeHistoryFail ? "本学期/历史学期" : "本学期";
@@ -643,16 +645,28 @@ function GrantPanel({ store }: { store: Store }) {
     setBusy(false);
   };
 
+  if (term === ALL_TERM) {
+    return (
+      <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground shadow-xs">
+        按成绩授予一次只针对一个学期，请在左侧「当前学期」选定具体学期。
+        {latestGradeTerm ? (
+          <Button variant="outline" size="sm" onClick={() => termScope.setTerm(latestGradeTerm)}>
+            跳到最近有成绩的学期（{latestGradeTerm}）
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="rounded-xl border bg-card p-4 shadow-xs">
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="学期" required>
-            <Select
-              value={activeTerm}
-              onValueChange={setTerm}
-              options={gradeTerms.length ? gradeTerms.map((t) => ({ value: t, label: t })) : [{ value: "", label: "暂无学期" }]}
-            />
+            <div className="flex h-9 items-center justify-between rounded-md border bg-muted/40 px-3 text-sm">
+              <span className="font-medium">{activeTerm || "暂无学期"}</span>
+              <span className="text-[11px] text-muted-foreground">跟随左侧学期</span>
+            </div>
           </FormField>
           <FormField label="授予日期" required>
             <DateInput value={grantedOn} onChange={setGrantedOn} className="sm:max-w-none" />
@@ -847,9 +861,10 @@ function GrantPanel({ store }: { store: Store }) {
 export default function HonorsView({ store }: { store: Store }) {
   const [view, setView] = useState<View>("ledger");
   const scope = useClassScope();
+  const termScope = useTermScope();
   const activeCount = useMemo(
-    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name)).length,
-    [store.honors, scope],
+    () => store.honors.filter((h) => h.status === "active" && inClassScope(scope, h.class_name) && inTermScope(termScope, h.term)).length,
+    [store.honors, scope, termScope],
   );
   return (
     <div className="space-y-3">

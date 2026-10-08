@@ -3,15 +3,16 @@ import { ChevronLeft, Search, Trophy, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyHint, Select } from "@/components/form";
+import { EmptyHint } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { termNow, useTermScope } from "@/hooks/use-term-scope";
 import type { Student } from "@/lib/types";
 import type { Grade } from "@/lib/types";
 import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankRow, type RankSortMode } from "@/lib/rank-view";
 import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
-import { ALL, fmt1, HOT_CLASS, ScoreCell, termOptionsOf } from "./parts";
+import { ALL, fmt1, HOT_CLASS, ScoreCell } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
 function StatTile({ label, value, sub, onClick }: { label: string; value: string; sub?: string; onClick?: () => void }) {
@@ -104,14 +105,14 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
 export default function TranscriptView({ store, goto }: { store: Store; goto: GotoFn }) {
   const [keyword, setKeyword] = useState("");
   const scope = useClassScope();
-  const [term, setTerm] = useState(ALL);
+  // 学期不再本页自管，跟随侧栏全局学期作用域（ALL=每学期分组展示）
+  const term = termNow(useTermScope());
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
-  const termOptions = useMemo(() => termOptionsOf(store.grades.map((g) => g.term)), [store.grades]);
   const evalByStudentTerm = useMemo(
     () => new Map(store.termEvals.map((e) => [`${e.student_id}|${e.term}`, e])),
     [store.termEvals]
@@ -203,9 +204,6 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
               <X className="size-4" />
             </button>
           ) : null}
-        </div>
-        <div className="w-36 sm:w-44">
-          <Select value={term} onValueChange={setTerm} options={termOptions} />
         </div>
         <RankSortControl
           mode={sortMode}

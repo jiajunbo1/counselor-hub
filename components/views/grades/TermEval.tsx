@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ImportDialog from "@/components/ImportDialog";
 import { Input } from "@/components/ui/input";
-import { EmptyHint, Select } from "@/components/form";
+import { EmptyHint } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
+import { termNow, useTermScope } from "@/hooks/use-term-scope";
 import { TERM_EVAL_COLUMNS, exportCsv } from "@/lib/import-export";
 import { gradesOfTerm, round1, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
@@ -23,13 +24,15 @@ interface Draft {
 
 const clamp01 = (n: number) => Math.max(0, Math.min(100, Math.round(n * 10) / 10));
 
-export default function TermEvalView({ store, goto, focusNo, focusTerm }: { store: Store; goto: GotoFn; focusNo?: string; focusTerm?: string }) {
+export default function TermEvalView({ store, goto, focusNo }: { store: Store; goto: GotoFn; focusNo?: string }) {
   const terms = useMemo(
     () => [...new Set([...store.grades.map((g) => g.term), ...store.termEvals.map((e) => e.term)].filter(Boolean))].sort(),
     [store.grades, store.termEvals]
   );
-  const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
-  const [term, setTerm] = useState<string | null>(focusTerm ?? null);
+  const latestTerm = terms.length > 0 ? terms[terms.length - 1] : "";
+  // 学期跟随侧栏全局作用域；测评一次只评一个学期，「全部学期」时给出提示
+  const termScope = useTermScope();
+  const term = termNow(termScope);
   const classScope = useClassScope();
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
   const [groupByClass, setGroupByClass] = useState(true);
@@ -40,12 +43,8 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
   const [showRules, setShowRules] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const activeTerm = term ?? defaultTerm;
+  const activeTerm = term === ALL ? "" : term;
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
-  const termOptions = useMemo(() => {
-    const list = focusTerm && !terms.includes(focusTerm) ? [...terms, focusTerm].sort() : terms;
-    return list.map((t) => ({ value: t, label: t }));
-  }, [terms, focusTerm]);
   const evalByStudent = useMemo(
     () => new Map(store.termEvals.filter((e) => e.term === activeTerm).map((e) => [e.student_id, e])),
     [store.termEvals, activeTerm]
@@ -140,10 +139,23 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
     toast.success("测评表已开始下载。");
   };
 
+  if (term === ALL) {
+    return (
+      <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground shadow-xs">
+        综合测评一次只录入一个学期，请在左侧「当前学期」选定具体学期。
+        {latestTerm ? (
+          <Button variant="outline" size="sm" onClick={() => termScope.setTerm(latestTerm)}>
+            跳到最新学期（{latestTerm}）
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-64">
+        <div className="relative min-w-40 flex-1 sm:max-w-64">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索姓名 / 学号" maxLength={30} className="pl-8 pr-7" />
           {keyword ? (
@@ -151,9 +163,6 @@ export default function TermEvalView({ store, goto, focusNo, focusTerm }: { stor
               <X className="size-4" />
             </button>
           ) : null}
-        </div>
-        <div className="w-36 sm:w-44">
-          <Select value={activeTerm} onValueChange={setTerm} options={termOptions.length ? termOptions : [{ value: "", label: "暂无学期" }]} />
         </div>
         <div className="ml-auto flex shrink-0 gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowRules(true)}>
