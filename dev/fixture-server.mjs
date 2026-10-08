@@ -68,6 +68,7 @@ const db = {
   term_evaluations: [],
   evaluation_settings: [],
   student_positions: [],
+  student_honors: [],
   student_photos: [],
 };
 
@@ -224,6 +225,19 @@ const seed = () => {
   position(s4, "学习委员", "2026-09-08", { attend_report: true });
   position(s6, "体育委员", "2025-09-10", { status: "revoked", revoked_at: "2026-03-01T00:00:00Z", note: "因连续旷课调整" });
 
+  // 荣誉台账演示：按 2025-2026-2 综合名次授予 + 一条撤销留档
+  const honor = (stu, title, level, term, granted_on, { status = "active", note = "", revoked_at = null, granted_by = "示例辅导员" } = {}) => {
+    db.student_honors.push({
+      id: randomUUID(), student_id: stu.id, title, level, term, granted_on, note,
+      status, revoked_at, granted_by,
+      created_at: `${granted_on}T00:00:00Z`, updated_at: revoked_at ?? `${granted_on}T00:00:00Z`,
+    });
+  };
+  honor(s4, "学习标兵", "校级", "2025-2026-2", "2026-09-10", { note: "综合分年级第一" });
+  honor(s3, "三好学生", "校级", "2025-2026-2", "2026-09-10");
+  honor(s9, "三好学生", "院级", "2025-2026-2", "2026-09-10");
+  honor(s6, "优秀学生干部", "班级", "2025-2026-2", "2026-03-05", { status: "revoked", revoked_at: "2026-03-20T00:00:00Z", note: "因晚归通报取消" });
+
   // 证件照演示：王芳一张 240x320 双色示例照（真实上传走 photo.* 链路）
   {
     const id = randomUUID();
@@ -282,6 +296,7 @@ const UNIQUE = {
   term_evaluations: [(row, all) => all.some((r) => r.id !== row.id && r.student_id === row.student_id && r.term === row.term)],
   evaluation_settings: [],
   student_positions: [],
+  student_honors: [],
   student_photos: [(row, all) => all.some((r) => r.id !== row.id && r.student_id === row.student_id)],
 };
 const dupError = () => ({ data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } });

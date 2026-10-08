@@ -1,5 +1,5 @@
 // 辅导员学生工作平台 - Function 业务处理器
-// GET  /functions/v1/app?action=students|records|rooms|courses|grades|audit_logs|attachments|messages|leave_rules|feedback|attendance|term_evaluations|evaluation_settings|positions|classmates|auth_status|auth_me|account.list
+// GET  /functions/v1/app?action=students|records|rooms|courses|grades|audit_logs|attachments|messages|leave_rules|feedback|attendance|term_evaluations|evaluation_settings|positions|honors|classmates|auth_status|auth_me|account.list
 // POST /functions/v1/app  body: { action: "auth.lookup" | "auth.login" | "student.create" | "attachment.prepare" | ..., ...payload }
 // 业务接口以应用内账号会话（x-app-token 请求头）鉴权；auth.bootstrap 仅在 Qoder 登录上下文下可用一次。
 import { getUser } from "./auth.mjs";
@@ -23,6 +23,10 @@ const EVAL_COLS = "id,exam_weight,usual_weight,absent_deduct,late_deduct,leave_d
 const ATTEND_KINDS = ["late", "absent", "leave", "early"];
 const POSITION_COLS = "id,student_id,title,note,status,appointed_on,revoked_at,attend_report,created_at,updated_at";
 const POSITION_STATUSES = ["active", "revoked"];
+const HONOR_COLS = "id,student_id,title,level,term,granted_on,note,status,revoked_at,granted_by,created_at,updated_at";
+const HONOR_LEVELS = ["国家级", "省级", "校级", "院级", "班级"];
+// 挂科口径与 lib/evaluation.ts 的 PASS_SCORE 一致：考试分低于 60 即一票否决荣誉
+const PASS_SCORE = 60;
 const DEFAULT_EVAL = { exam_weight: "70", usual_weight: "30", absent_deduct: "5", late_deduct: "1", leave_deduct: "0" };
 const LOG_COLS = "id,actor_id,actor_name,action,target,detail,created_at";
 
@@ -284,6 +288,21 @@ async function listAll(supabase, table, columns, orderColumn, limit, ascending =
     .limit(limit);
   if (error || !Array.isArray(data)) throw Object.assign(new Error("read_failed"), { db: true });
   return data;
+}
+
+// 荣誉门禁：哪些学生有挂科。term 非空只看该学期，term 为空看全部历史；
+// includeHistory=true 时把历史学期的不及格也计进来。读取上限与 action=grades 同为 2000，
+// 保证前端圈选看到的成绩与后端门禁判的是同一批数据。
+async function failedStudentIds(supabase, { term, includeHistory }) {
+  const rows = await listAll(supabase, "grades", "student_id,term,score", "created_at", 2000);
+  const ids = new Set();
+  for (const g of rows) {
+    const score = Number(g.score);
+    if (!Number.isFinite(score) || score >= PASS_SCORE) continue;
+    if (!includeHistory && term && g.term !== term) continue;
+    ids.add(g.student_id);
+  }
+  return ids;
 }
 
 // 审计日志：写入失败不影响主操作（表无 update/delete 权限，仅可追加与查询）。
@@ -1192,6 +1211,135 @@ async function handleStaffWrite({ supabase, action, body, member }) {
       if (!data) return fail("not_found", 404);
       return json({ ok: true, item: data });
     }
+    // ---- 荣誉台账（批次 V）：仅辅导员/管理员可读写，学生端不可见 ----
+    case "honor.create": {
+      const studentId = idOf(body.student_id);
+      const title = str(body.title, { max: 120, required: true });
+      const level = oneOf(body.level, HONOR_LEVELS, { required: true });
+      const grantedOn = dateStr(body.granted_on);
+      const term = str(body.term, { max: 32 }) ?? "";
+      const note = str(body.note, { max: 600 }) ?? "";
+      // 辅导员在弹窗里勾选「已知悉该生挂科，仍要授予」；没勾选就被挂科规则拦下
+      const ackFailed = body.ack_failed === true;
+      if (!studentId || !title || !level || !grantedOn) return fail("invalid_request");
+      if (ackFailed && !note) return fail("honor_ack_note_required", 400);
+      const { data: studentRow, error: studentErr } = await supabase
+        .from("students").select("id").eq("id", studentId).maybeSingle();
+      if (studentErr) return fail("database_request_failed", 503);
+      if (!studentRow) return fail("not_found", 404);
+      if (!ackFailed) {
+        const failed = await failedStudentIds(supabase, { term, includeHistory: false });
+        if (failed.has(studentId)) return fail("honor_student_failed", 409);
+      }
+      const { data: dupRow, error: dupErr } = await supabase
+        .from("student_honors").select("id")
+        .eq("student_id", studentId).eq("title", title).eq("term", term).eq("status", "active").maybeSingle();
+      if (dupErr) return fail("database_request_failed", 503);
+      if (dupRow) return fail("honor_exists", 409);
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("student_honors")
+        .insert({
+          id: crypto.randomUUID(), student_id: studentId, title, level, term,
+          granted_on: grantedOn, note, status: "active", revoked_at: null,
+          granted_by: member.display_name, created_at: now, updated_at: now,
+        })
+        .select(HONOR_COLS)
+        .single();
+      if (error) return fail("database_request_failed", 503);
+      return json({ ok: true, item: data });
+    }
+    // 按名次圈选后的批量授予：整批共用称号/级别/学期/日期，只换学生
+    case "honor.bulk_create": {
+      const title = str(body.title, { max: 120, required: true });
+      const level = oneOf(body.level, HONOR_LEVELS, { required: true });
+      const grantedOn = dateStr(body.granted_on);
+      const term = str(body.term, { max: 32 }) ?? "";
+      const note = str(body.note, { max: 600 }) ?? "";
+      const includeHistory = body.include_history_fail === true;
+      const allowFailed = body.allow_failed === true;
+      const ids = Array.isArray(body.student_ids) ? body.student_ids : null;
+      if (!title || !level || !grantedOn || !ids || ids.length === 0 || ids.length > 300) return fail("invalid_request");
+      // 临时放开挂科限制必须留说明，避免事后无人知道为什么挂了科还能评优
+      if (allowFailed && !note) return fail("honor_ack_note_required", 400);
+      const studentIds = [...new Set(ids)];
+      if (studentIds.some((v) => idOf(v) === null)) return fail("invalid_request");
+      const students = await listAll(supabase, "students", "id", "student_no", 1000);
+      const known = new Set(students.map((s) => s.id));
+      const honorRows = await listAll(supabase, "student_honors", "id,student_id,title,term,status", "created_at", 2000);
+      const already = new Set(honorRows.filter((r) => r.status === "active" && r.title === title && r.term === term).map((r) => r.student_id));
+      const failed = allowFailed ? new Set() : await failedStudentIds(supabase, { term, includeHistory });
+      const now = new Date().toISOString();
+      let created = 0;
+      const skipped = [];
+      for (const studentId of studentIds) {
+        if (!known.has(studentId)) {
+          skipped.push({ student_id: studentId, reason: "student_not_found" });
+          continue;
+        }
+        if (failed.has(studentId)) {
+          skipped.push({ student_id: studentId, reason: "student_failed" });
+          continue;
+        }
+        if (already.has(studentId)) {
+          skipped.push({ student_id: studentId, reason: "honor_exists" });
+          continue;
+        }
+        const { error } = await supabase
+          .from("student_honors")
+          .insert({
+            id: crypto.randomUUID(), student_id: studentId, title, level, term,
+            granted_on: grantedOn, note, status: "active", revoked_at: null,
+            granted_by: member.display_name, created_at: now, updated_at: now,
+          });
+        if (error) return fail("database_request_failed", 503);
+        already.add(studentId);
+        created += 1;
+      }
+      return json({ ok: true, created, skipped });
+    }
+    case "honor.update": {
+      const id = idOf(body.id);
+      if (!id) return fail("invalid_id");
+      const title = str(body.title, { max: 120, required: true });
+      const level = oneOf(body.level, HONOR_LEVELS, { required: true });
+      const grantedOn = dateStr(body.granted_on);
+      const term = str(body.term, { max: 32 }) ?? "";
+      const note = str(body.note, { max: 600 }) ?? "";
+      if (!title || !level || !grantedOn) return fail("invalid_request");
+      const { data, error } = await supabase
+        .from("student_honors")
+        .update({ title, level, term, granted_on: grantedOn, note, updated_at: new Date().toISOString() })
+        .eq("id", id).eq("status", "active")
+        .select(HONOR_COLS)
+        .maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!data) return fail("not_found", 404);
+      return json({ ok: true, item: data });
+    }
+    case "honor.revoke": {
+      const id = idOf(body.id);
+      if (!id) return fail("invalid_id");
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("student_honors")
+        .update({ status: "revoked", revoked_at: now, updated_at: now })
+        .eq("id", id).eq("status", "active")
+        .select(HONOR_COLS)
+        .maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!data) return fail("not_found", 404);
+      return json({ ok: true, item: data });
+    }
+    case "honor.delete": {
+      const id = idOf(body.id);
+      if (!id) return fail("invalid_id");
+      const { data, error } = await supabase
+        .from("student_honors").delete().eq("id", id).select("id").maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!data) return fail("not_found", 404);
+      return json({ ok: true, item: data });
+    }
     default:
       return fail("unknown_action", 404);
   }
@@ -1289,6 +1437,8 @@ async function handleWrite({ supabase, action, body }) {
       if (teErr) return fail("database_request_failed", 503);
       const { error: posErr } = await supabase.from("student_positions").delete().eq("student_id", id);
       if (posErr) return fail("database_request_failed", 503);
+      const { error: honorErr } = await supabase.from("student_honors").delete().eq("student_id", id);
+      if (honorErr) return fail("database_request_failed", 503);
       await purgePhotoFor(supabase, [id]);
       const { data, error } = await supabase.from("students").delete().eq("id", id).select("id").maybeSingle();
       if (error) return fail("database_request_failed", 503);
@@ -2050,6 +2200,25 @@ async function handleRead({ supabase, params, member }) {
     });
     return json({ ok: true, data: items });
   }
+  if (action === "honors") {
+    // 学生端不可见：荣誉台账只对辅导员/管理员开放
+    if (member.role === "student") return fail("access_denied", 403);
+    const items = await listAll(supabase, "student_honors", HONOR_COLS, "created_at", 2000);
+    const students = await listAll(supabase, "students", STUDENT_COLS, "student_no", 1000);
+    const studentById = new Map(students.map((s) => [s.id, s]));
+    for (const r of items) {
+      const s = studentById.get(r.student_id);
+      r.student_name = s?.name ?? "（学生已删除）";
+      r.student_no = s?.student_no ?? "-";
+      r.class_name = s?.class_name ?? "";
+    }
+    items.sort((a, b) => {
+      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      if (a.granted_on !== b.granted_on) return a.granted_on < b.granted_on ? 1 : -1;
+      return a.student_no < b.student_no ? -1 : 1;
+    });
+    return json({ ok: true, data: items });
+  }
   if (action === "evaluation_settings") {
     return json({ ok: true, data: await readEvaluationSettings(supabase) });
   }
@@ -2097,11 +2266,11 @@ async function handleRead({ supabase, params, member }) {
   return fail("unknown_action", 404);
 }
 
-const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "classmates", "photos"]);
+const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "honors", "classmates", "photos"]);
 const PUBLIC_WRITE_ACTIONS = new Set(["auth.lookup", "auth.login", "auth.bootstrap", "auth.student_register"]);
 const SELF_WRITE_ACTIONS = new Set(["auth.logout", "auth.change_password", "auth.bind_phone"]);
 const STUDENT_WRITE_ACTIONS = new Set(["profile.submit", "leave.submit", "leave.cancel", "message.send", "attendance.report"]);
-const STAFF_WRITE_ACTIONS = new Set(["message.reply", "leave_rules.save", "registration_settings.save", "evaluation_settings.save", "position.create", "position.revoke", "position.set_attend_report"]);
+const STAFF_WRITE_ACTIONS = new Set(["message.reply", "leave_rules.save", "registration_settings.save", "evaluation_settings.save", "position.create", "position.revoke", "position.set_attend_report", "honor.create", "honor.bulk_create", "honor.update", "honor.revoke", "honor.delete"]);
 const ADMIN_WRITE_ACTIONS = new Set(["account.create", "account.update", "account.reset_password"]);
 const FEEDBACK_SUBMIT_ACTIONS = new Set(["feedback.submit"]);
 const FEEDBACK_ADMIN_ACTIONS = new Set(["feedback.reply"]);
@@ -2214,8 +2383,11 @@ export async function handleApi({ request, supabase }) {
       const detail = ADMIN_WRITE_ACTIONS.has(action)
         ? accountDetail(action, body)
         : (() => {
-            const { action: _omit, rows, password, old_password, new_password, ...rest } = body;
-            return Array.isArray(rows) ? `rows=${rows.length} ${JSON.stringify(rest)}` : JSON.stringify(rest);
+            const { action: _omit, rows, student_ids, password, old_password, new_password, ...rest } = body;
+            if (Array.isArray(rows)) return `rows=${rows.length} ${JSON.stringify(rest)}`;
+            // 批量授予只留人数，避免整串 UUID 灌进审计详情
+            if (Array.isArray(student_ids)) return `students=${student_ids.length} ${JSON.stringify(rest)}`;
+            return JSON.stringify(rest);
           })();
       await logAction(supabase, actorFrom(member), action, auditTarget(body), detail);
     }

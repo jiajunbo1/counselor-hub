@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Lightbulb,
   LogOut,
+  Medal,
   MessageSquareText,
   RefreshCw,
   ShieldCheck,
@@ -35,6 +36,7 @@ import DormsView from "@/components/views/Dorms";
 import CoursesView from "@/components/views/Courses";
 import GradesView from "@/components/views/Grades";
 import PositionsView from "@/components/views/Positions";
+import HonorsView from "@/components/views/Honors";
 import RecordsView, { LeavesView } from "@/components/views/Records";
 import MessagesView from "@/components/views/Messages";
 import FeedbackView from "@/components/views/Feedback";
@@ -55,6 +57,7 @@ const TABS = [
   { id: "dorms", label: "宿舍", icon: BedDouble, group: "学业" },
   { id: "courses", label: "课程", icon: BookOpen, group: "学业" },
   { id: "grades", label: "成绩", icon: GraduationCap, group: "学业" },
+  { id: "honors", label: "荣誉", icon: Medal, group: "学业" },
   { id: "positions", label: "职务", icon: Crown, group: "学业" },
   { id: "statistics", label: "统计", icon: ChartColumn, group: "系统" },
   { id: "admin", label: "后台", icon: ShieldCheck, group: "系统", adminOnly: true },
@@ -177,6 +180,8 @@ function Workspace({ auth }: { auth: Auth }) {
         return <GradesView store={store} />;
       case "positions":
         return <PositionsView store={store} />;
+      case "honors":
+        return <HonorsView store={store} />;
       case "records":
         return <RecordsView store={store} member={member} />;
       case "leaves":

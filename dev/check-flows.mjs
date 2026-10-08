@@ -1110,5 +1110,189 @@ const qClean = await get("photos", T);
 results.push(qClean.ok && qClean.data.length === 1 && qClean.data[0].original_name?.includes("王芳")
   ? "PASS batch Q leaves only the seed photo" : `FAIL qCleanup ${JSON.stringify(qClean.data?.map((p) => p.original_name))}`);
 
+// ===== 批次 V：荣誉台账（按成绩授予 / 撤销留档 / 学生端不可见）=====
+const VTERM = "2025-2026-2";
+const GHOST = "00000000-0000-4000-8000-000000000000";
+const vReg = await post({ action: "auth.student_register", student_no: "V900000001", name: "荣誉测试生" });
+const vLogin = await post({ action: "auth.login", username: "v900000001", password: "123456" });
+await post({ action: "auth.change_password", old_password: "123456", new_password: "vhonor789" }, vLogin.token);
+const VT = vLogin.token;
+const vid = vReg.member?.student_id;
+const vMate = await post({ action: "student.create", student_no: "V900000002", name: "荣誉陪跑生", gender: "女", class_name: "计算机2401" }, T);
+const vid2 = vMate.item?.id;
+results.push(vReg.ok && vLogin.ok && vMate.ok ? "PASS 批次V fixture accounts ready" : `FAIL vFixture ${JSON.stringify(vReg).slice(0, 120)} ${JSON.stringify(vMate).slice(0, 120)}`);
+
+// 学生端整块不可见：读被硬拒、写被硬拒、匿名先要登录
+const vStuRead = await get("honors", VT);
+results.push(vStuRead.code === "access_denied" && vStuRead.status === 403 ? "PASS student cannot read honors (staff-only module)" : `FAIL vStuRead ${JSON.stringify(vStuRead)}`);
+const vAnonRead = await get("honors");
+results.push(vAnonRead.code === "login_required" && vAnonRead.status === 401 ? "PASS honors read requires session" : `FAIL vAnonRead ${JSON.stringify(vAnonRead)}`);
+const vAnonWrite = await post({ action: "honor.create", student_id: vid ?? GHOST, title: "三好学生", level: "校级", granted_on: "2026-10-08" });
+results.push(vAnonWrite.code === "login_required" && vAnonWrite.status === 401 ? "PASS honor writes require session (live smoke discriminator)" : `FAIL vAnonWrite ${JSON.stringify(vAnonWrite)}`);
+const vStuWrite = await post({ action: "honor.create", student_id: vid, title: "三好学生", level: "校级", granted_on: "2026-10-08" }, VT);
+results.push(vStuWrite.code === "access_denied" ? "PASS student cannot grant honors" : `FAIL vStuWrite ${JSON.stringify(vStuWrite)}`);
+const vUnknown = await post({ action: "honor.not_a_thing", id: GHOST }, T);
+results.push(vUnknown.code === "unknown_action" ? "PASS unknown honor action still 404" : `FAIL vUnknown ${JSON.stringify(vUnknown)}`);
+
+// 台账读取：联名学生字段 + 辅导员见全表（不是自见作用域）
+const vSeedList = await get("honors", T);
+const vSeed = (vSeedList.data ?? []).find((h) => h.title === "学习标兵");
+results.push(
+  vSeedList.ok && vSeed?.student_name === "赵敏" && vSeed?.class_name === "计算机2401" && vSeed?.status === "active"
+    ? "PASS admin sees honor ledger with joined student fields"
+    : `FAIL vSeed ${JSON.stringify(vSeedList).slice(0, 200)}`
+);
+const vSeedC = await get("honors", CT2);
+results.push(vSeedC.ok && vSeedC.data.length === vSeedList.data.length ? "PASS counselor sees the whole ledger" : `FAIL vSeedC ${vSeedC.data?.length}/${vSeedList.data?.length}`);
+
+// 单条授予 + 去重口径（同名同学期即重复，不看级别；换学期可再授）
+const vCreate = await post({ action: "honor.create", student_id: vid, title: "三好学生", level: "校级", term: VTERM, granted_on: "2026-10-08", note: "综合分班内第一" }, T);
+results.push(
+  vCreate.ok && vCreate.item?.status === "active" && vCreate.item?.granted_by && vCreate.item?.revoked_at === null
+    ? "PASS honor.create stores active row with granter name"
+    : `FAIL vCreate ${JSON.stringify(vCreate)}`
+);
+const vDup = await post({ action: "honor.create", student_id: vid, title: "三好学生", level: "班级", term: VTERM, granted_on: "2026-10-09" }, T);
+results.push(vDup.code === "honor_exists" && vDup.status === 409 ? "PASS same title+term dedupes regardless of level (active rows only)" : `FAIL vDup ${JSON.stringify(vDup)}`);
+const vOtherTerm = await post({ action: "honor.create", student_id: vid, title: "三好学生", level: "校级", term: "2026-2027-1", granted_on: "2026-10-09" }, T);
+results.push(vOtherTerm.ok ? "PASS same title in another term is allowed" : `FAIL vOtherTerm ${JSON.stringify(vOtherTerm)}`);
+const vNoTerm = await post({ action: "honor.create", student_id: vid, title: "文明个人", level: "班级", granted_on: "2026-10-08" }, T);
+results.push(vNoTerm.ok && vNoTerm.item?.term === "" ? "PASS honor.term is optional" : `FAIL vNoTerm ${JSON.stringify(vNoTerm)}`);
+
+// 参数校验
+const vBadLevel = await post({ action: "honor.create", student_id: vid, title: "某某奖", level: "世界级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(vBadLevel.code === "invalid_request" ? "PASS honor rejects level outside the five" : `FAIL vBadLevel ${JSON.stringify(vBadLevel)}`);
+const vBadDate = await post({ action: "honor.create", student_id: vid, title: "某某奖", level: "校级", term: VTERM, granted_on: "2026/10/08" }, T);
+results.push(vBadDate.code === "invalid_request" ? "PASS honor rejects non-ISO granted_on" : `FAIL vBadDate ${JSON.stringify(vBadDate)}`);
+const vNoTitle = await post({ action: "honor.create", student_id: vid, level: "校级", granted_on: "2026-10-08" }, T);
+results.push(vNoTitle.code === "invalid_request" ? "PASS honor.create requires title" : `FAIL vNoTitle ${JSON.stringify(vNoTitle)}`);
+const vGhost = await post({ action: "honor.create", student_id: GHOST, title: "某某奖", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(vGhost.code === "not_found" && vGhost.status === 404 ? "PASS honor.create for missing student → not_found" : `FAIL vGhost ${JSON.stringify(vGhost)}`);
+
+// 批量授予：整批共用称号/级别/学期，逐人跳过
+await post({ action: "honor.create", student_id: vid2, title: "优秀团员", level: "院级", term: VTERM, granted_on: "2026-10-08" }, T);
+const vBulk = await post({ action: "honor.bulk_create", title: "优秀团员", level: "院级", term: VTERM, granted_on: "2026-10-08", student_ids: [vid2, GHOST, vid] }, T);
+results.push(
+  vBulk.ok && vBulk.created === 1 && vBulk.skipped?.length === 2
+    && vBulk.skipped.some((s) => s.reason === "honor_exists" && s.student_id === vid2)
+    && vBulk.skipped.some((s) => s.reason === "student_not_found" && s.student_id === GHOST)
+    ? "PASS bulk grant counts created and skips existing/missing"
+    : `FAIL vBulk ${JSON.stringify(vBulk)}`
+);
+const vBulkEmpty = await post({ action: "honor.bulk_create", title: "某某奖", level: "校级", granted_on: "2026-10-08", student_ids: [] }, T);
+results.push(vBulkEmpty.code === "invalid_request" ? "PASS bulk rejects empty list" : `FAIL vBulkEmpty ${JSON.stringify(vBulkEmpty)}`);
+const vBulkBig = await post({ action: "honor.bulk_create", title: "某某奖", level: "校级", granted_on: "2026-10-08", student_ids: Array.from({ length: 301 }, () => crypto.randomUUID()) }, T);
+results.push(vBulkBig.code === "invalid_request" ? "PASS bulk caps at 300 students" : `FAIL vBulkBig ${JSON.stringify(vBulkBig).slice(0, 120)}`);
+const vBulkBadId = await post({ action: "honor.bulk_create", title: "某某奖", level: "校级", granted_on: "2026-10-08", student_ids: ["not-a-uuid"] }, T);
+results.push(vBulkBadId.code === "invalid_request" ? "PASS bulk rejects malformed student id" : `FAIL vBulkBadId ${JSON.stringify(vBulkBadId)}`);
+
+// 订正 → 撤销留档 → 历史不可改 → 可重新授予 → 留档可删
+const vRow = (await get("honors", T)).data.find((h) => h.student_id === vid2 && h.title === "优秀团员");
+const vUpdate = await post({ action: "honor.update", id: vRow?.id, title: "优秀团员", level: "校级", term: VTERM, granted_on: "2026-10-08", note: "级别更正" }, T);
+results.push(vUpdate.ok && vUpdate.item?.level === "校级" && vUpdate.item?.note === "级别更正" ? "PASS honor.update edits an active row" : `FAIL vUpdate ${JSON.stringify(vUpdate)}`);
+const vRevoke = await post({ action: "honor.revoke", id: vUpdate.item?.id }, T);
+results.push(vRevoke.ok && vRevoke.item?.status === "revoked" && vRevoke.item?.revoked_at ? "PASS honor.revoke moves the row to history" : `FAIL vRevoke ${JSON.stringify(vRevoke)}`);
+const vRevokeAgain = await post({ action: "honor.revoke", id: vRevoke.item?.id }, T);
+results.push(vRevokeAgain.code === "not_found" ? "PASS revoking twice → not_found" : `FAIL vRevokeAgain ${JSON.stringify(vRevokeAgain)}`);
+const vUpdateHistory = await post({ action: "honor.update", id: vRevoke.item?.id, title: "优秀团员", level: "班级", granted_on: "2026-10-08" }, T);
+results.push(vUpdateHistory.code === "not_found" ? "PASS history rows are immutable" : `FAIL vUpdateHistory ${JSON.stringify(vUpdateHistory)}`);
+const vRegrant = await post({ action: "honor.create", student_id: vid2, title: "优秀团员", level: "院级", term: VTERM, granted_on: "2026-10-10" }, T);
+results.push(vRegrant.ok && vRegrant.item?.status === "active" ? "PASS revoked honor does not block re-granting" : `FAIL vRegrant ${JSON.stringify(vRegrant)}`);
+const vDelHistory = await post({ action: "honor.delete", id: vRevoke.item?.id }, T);
+results.push(vDelHistory.ok ? "PASS history row can be deleted" : `FAIL vDelHistory ${JSON.stringify(vDelHistory)}`);
+const vDelAgain = await post({ action: "honor.delete", id: vRevoke.item?.id }, T);
+results.push(vDelAgain.code === "not_found" ? "PASS deleting a missing honor → not_found" : `FAIL vDelAgain ${JSON.stringify(vDelAgain)}`);
+
+// 级联 + 审计
+const vDelStu = await post({ action: "student.delete", id: vid2 }, T);
+const vAfterCascade = await get("honors", T);
+results.push(vDelStu.ok && vAfterCascade.data.every((h) => h.student_id !== vid2) ? "PASS student.delete cascades honors" : `FAIL vCascade ${JSON.stringify(vAfterCascade).slice(0, 160)}`);
+const vLog = (await get("audit_logs", T)).data.find((l) => l.action === "honor.bulk_create");
+results.push(vLog?.detail?.includes("students=3") && !vLog.detail.includes(GHOST) ? "PASS bulk grant audited by count, ids not dumped" : `FAIL vLog ${JSON.stringify(vLog)}`);
+
+// 收尾：删掉测试授予与测试生，台账只留四条种子荣誉（避免污染本地预览）
+const vMine = (await get("honors", T)).data.filter((h) => h.student_id === vid);
+for (const h of vMine) await post({ action: "honor.delete", id: h.id }, T);
+await post({ action: "student.delete", id: vid }, T);
+const vClean = await get("honors", T);
+results.push(
+  vMine.length === 4 && vClean.ok && vClean.data.length === 4 && vClean.data.every((h) => h.status === "active" || h.student_name === "刘洋")
+    ? "PASS 批次V leaves only the four seed honors"
+    : `FAIL vCleanup ${vMine.length} ${JSON.stringify(vClean.data?.map((h) => h.title))}`
+);
+
+// ===== 批次 W：挂科一票否决（活门禁 / 压线口径 / 留痕放行 / 历史学期开关）=====
+const wCourse = (await get("courses", T)).data.find((c) => c.name === "数据结构") ?? (await get("courses", T)).data[0];
+const wA = await post({ action: "student.create", student_no: "W900000001", name: "挂科门禁生", gender: "男", class_name: "计算机2401" }, T);
+const wB = await post({ action: "student.create", student_no: "W900000002", name: "历史挂科生", gender: "女", class_name: "计算机2401" }, T);
+const wAid = wA.item?.id;
+const wBid = wB.item?.id;
+const wSeedFail = (await get("students", T)).data.find((s) => s.student_no === "2023030302"); // 蒋磊：55 数据结构 2025-2026-2
+results.push(wCourse && wAid && wBid && wSeedFail ? "PASS 批次W fixture accounts ready" : `FAIL wFixture ${JSON.stringify(wA).slice(0, 120)}`);
+
+// 无成绩的学生不受影响（门禁只在确有不及格记录时生效）
+const wNoGrade = await post({ action: "honor.create", student_id: wAid, title: "无成绩可授", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(wNoGrade.ok ? "PASS student without grades is never blocked by the fail gate" : `FAIL wNoGrade ${JSON.stringify(wNoGrade)}`);
+
+// 挂科即拦：种子库里 55 分的学生，本学期授予被 409 挡下
+const wSeedBlock = await post({ action: "honor.create", student_id: wSeedFail?.id, title: "学习先进", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(wSeedBlock.code === "honor_student_failed" && wSeedBlock.status === 409 ? "PASS failing student blocked at honor.create (409)" : `FAIL wSeedBlock ${JSON.stringify(wSeedBlock)}`);
+
+const wGrade = await post({ action: "grade.create", student_id: wAid, course_id: wCourse.id, term: VTERM, score: "42", exam_date: "2026-06-01" }, T);
+const wBlock = await post({ action: "honor.create", student_id: wAid, title: "挂科后不可授", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(wGrade.ok && wBlock.code === "honor_student_failed" ? "PASS newly recorded fail blocks the next grant" : `FAIL wBlock ${JSON.stringify(wGrade).slice(0, 100)} ${JSON.stringify(wBlock)}`);
+
+// 留痕放行：勾选确认必须带备注，带备注才放行，备注随记录归档
+const wAckNoNote = await post({ action: "honor.create", student_id: wAid, title: "挂科后不可授", level: "校级", term: VTERM, granted_on: "2026-10-08", ack_failed: true }, T);
+results.push(wAckNoNote.code === "honor_ack_note_required" && wAckNoNote.status === 400 ? "PASS override without a note is rejected" : `FAIL wAckNoNote ${JSON.stringify(wAckNoNote)}`);
+const wAck = await post({ action: "honor.create", student_id: wAid, title: "挂科后不可授", level: "校级", term: VTERM, granted_on: "2026-10-08", ack_failed: true, note: "竞赛获奖破例" }, T);
+results.push(wAck.ok && wAck.item?.note === "竞赛获奖破例" ? "PASS override with a note grants and keeps the reason" : `FAIL wAck ${JSON.stringify(wAck)}`);
+const wBulkAckNoNote = await post({ action: "honor.bulk_create", title: "破例批量", level: "校级", term: VTERM, granted_on: "2026-10-08", student_ids: [wAid], allow_failed: true }, T);
+results.push(wBulkAckNoNote.code === "honor_ack_note_required" ? "PASS bulk override also requires a note" : `FAIL wBulkAck ${JSON.stringify(wBulkAckNoNote)}`);
+
+// 压线口径：60 分不算挂科，改回 59 又立刻被拦（说明门禁读的是当前分数）
+const wEdge = await post({ action: "grade.update", id: wGrade.item?.id, score: "60" }, T);
+const wEdgeGrant = await post({ action: "honor.create", student_id: wAid, title: "压线可授", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(wEdge.ok && wEdgeGrant.ok ? "PASS 60 is a pass, not a fail" : `FAIL wEdge ${JSON.stringify(wEdge).slice(0, 100)} ${JSON.stringify(wEdgeGrant)}`);
+await post({ action: "grade.update", id: wGrade.item?.id, score: "59" }, T);
+const wEdgeBack = await post({ action: "honor.create", student_id: wAid, title: "改挂即拦", level: "校级", term: VTERM, granted_on: "2026-10-08" }, T);
+results.push(wEdgeBack.code === "honor_student_failed" ? "PASS reverting to 59 blocks again (gate reads live scores)" : `FAIL wEdgeBack ${JSON.stringify(wEdgeBack)}`);
+
+// 圈选批量：挂科学生跳过并给出原因，其余照常授予
+const wBulk = await post({ action: "honor.bulk_create", title: "批量授予", level: "校级", term: VTERM, granted_on: "2026-10-08", student_ids: [wAid, wBid] }, T);
+results.push(
+  wBulk.ok && wBulk.created === 1 && wBulk.skipped?.length === 1
+    && wBulk.skipped[0].reason === "student_failed" && wBulk.skipped[0].student_id === wAid
+    ? "PASS bulk skips failing students with reason student_failed"
+    : `FAIL wBulk ${JSON.stringify(wBulk)}`
+);
+const wBulkAllow = await post({ action: "honor.bulk_create", title: "批量破例", level: "校级", term: VTERM, granted_on: "2026-10-08", student_ids: [wAid, wBid], allow_failed: true, note: "院级评比名额已批" }, T);
+results.push(wBulkAllow.ok && wBulkAllow.created === 2 && wBulkAllow.skipped?.length === 0 ? "PASS bulk override grants everyone" : `FAIL wBulkAllow ${JSON.stringify(wBulkAllow)}`);
+
+// 历史学期开关：默认只看本学期，勾选后历史挂科也排除
+const wOldFail = await post({ action: "grade.create", student_id: wBid, course_id: wCourse.id, term: "2026-2027-1", score: "38", exam_date: "2027-01-05" }, T);
+const wTermGrant = await post({ action: "honor.create", student_id: wBid, title: "本学期仍可信", level: "班级", term: "2025-2026-1", granted_on: "2026-10-08" }, T);
+const wBulkNoFlag = await post({ action: "honor.bulk_create", title: "历史不计", level: "校级", term: "2025-2026-1", granted_on: "2026-10-08", student_ids: [wBid] }, T);
+results.push(wOldFail.ok && wTermGrant.ok && wBulkNoFlag.created === 1 ? "PASS other-term fail is ignored by default" : `FAIL wHistory ${JSON.stringify(wTermGrant)} ${JSON.stringify(wBulkNoFlag)}`);
+const wBulkHistory = await post({ action: "honor.bulk_create", title: "历史也计", level: "校级", term: "2025-2026-1", granted_on: "2026-10-08", student_ids: [wBid], include_history_fail: true }, T);
+results.push(
+  wBulkHistory.ok && wBulkHistory.created === 0
+    && wBulkHistory.skipped?.[0]?.reason === "student_failed"
+    ? "PASS include_history_fail widens the exclusion to past terms"
+    : `FAIL wBulkHistory ${JSON.stringify(wBulkHistory)}`
+);
+// 台账不填学期 = 按全部历史判，历史挂科同样拦下
+const wNoTerm = await post({ action: "honor.create", student_id: wBid, title: "未填学期", level: "校级", granted_on: "2026-10-08" }, T);
+results.push(wNoTerm.code === "honor_student_failed" ? "PASS grant without a term checks the whole record" : `FAIL wNoTerm ${JSON.stringify(wNoTerm)}`);
+
+// 收尾：删测试生（成绩与荣誉随级联消失），台账回到四条种子荣誉
+for (const id of [wAid, wBid]) await post({ action: "student.delete", id }, T);
+const wClean = await get("honors", T);
+results.push(
+  wClean.ok && wClean.data.length === 4 && wClean.data.every((h) => !String(h.title).startsWith("挂科") && !String(h.title).startsWith("批量"))
+    ? "PASS 批次W cleanup restores the seed ledger"
+    : `FAIL wCleanup ${JSON.stringify(wClean.data?.map((h) => h.title))}`
+);
+
 console.log(results.join("\n"));
 console.log(results.every((r) => r.startsWith("PASS")) ? `\nALL ${results.length} CASES PASS` : "\nSOME FAILED");

@@ -217,6 +217,28 @@ export interface PositionItem {
   class_name: string;
 }
 
+// 荣誉台账（批次 V）：按成绩批量授予的结构化荣誉，仅辅导员/管理员可见
+export type HonorStatus = "active" | "revoked";
+
+export interface HonorItem {
+  id: string;
+  student_id: string;
+  title: string;
+  level: string;
+  term: string;
+  granted_on: string;
+  note: string;
+  status: HonorStatus;
+  revoked_at: string | null;
+  granted_by: string;
+  created_at: string;
+  updated_at: string;
+  // 读取时由后端联查学生档案自动同步
+  student_name: string;
+  student_no: string;
+  class_name: string;
+}
+
 // 证件照元数据（批次 Q）：图像本体在存储桶 avatars/<student_id>/ 下，URL 由 photo.urls 批量签发
 export interface StudentPhoto {
   id: string;
@@ -243,6 +265,15 @@ export const POSITION_PRESETS = [
 ];
 export const POSITION_STATUS_LABEL: Record<PositionStatus, string> = {
   active: "现任",
+  revoked: "已撤销",
+};
+
+export const HONOR_PRESETS = [
+  "三好学生", "优秀学生干部", "学习标兵", "一等奖学金", "二等奖学金", "三等奖学金", "单科优秀奖", "优秀团员",
+];
+export const HONOR_LEVELS = ["国家级", "省级", "校级", "院级", "班级"];
+export const HONOR_STATUS_LABEL: Record<HonorStatus, string> = {
+  active: "现行荣誉",
   revoked: "已撤销",
 };
 
@@ -295,6 +326,11 @@ export const ACTION_LABEL: Record<string, string> = {
   "position.create": "委任学生职务",
   "position.revoke": "撤销学生职务",
   "position.set_attend_report": "调整班委考勤上报权限",
+  "honor.create": "授予学生荣誉",
+  "honor.bulk_create": "批量授予荣誉",
+  "honor.update": "修改荣誉",
+  "honor.revoke": "撤销荣誉",
+  "honor.delete": "删除荣誉记录",
   "attendance.report": "班委上报考勤",
   "auth.login": "登录系统",
   "auth.bootstrap": "初始化管理员",

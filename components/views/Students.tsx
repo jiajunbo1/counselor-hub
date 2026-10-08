@@ -37,6 +37,7 @@ import {
   POLITICAL_OPTIONS,
   RECORD_STATUS_LABEL,
   RECORD_TYPE_LABEL,
+  type HonorItem,
   type Student,
   type StudentPhoto,
 } from "@/lib/types";
@@ -185,6 +186,16 @@ export default function StudentsView({ store }: { store: Store }) {
     return m;
   }, [store.positions]);
 
+  const honorsByStudent = useMemo(() => {
+    const m = new Map<string, HonorItem[]>();
+    for (const h of store.honors) {
+      if (h.status !== "active") continue;
+      if (!m.has(h.student_id)) m.set(h.student_id, []);
+      m.get(h.student_id)!.push(h);
+    }
+    return m;
+  }, [store.honors]);
+
   const photoByStudent = useMemo(() => {
     const m = new Map<string, StudentPhoto>();
     for (const p of store.photos) m.set(p.student_id, p);
@@ -204,6 +215,7 @@ export default function StudentsView({ store }: { store: Store }) {
   const detailRecords = detail
     ? [...records.filter((r) => r.student_id === detail.id)].sort((a, b) => (a.occurred_on < b.occurred_on ? 1 : -1))
     : [];
+  const detailHonors = detail ? honorsByStudent.get(detail.id) ?? [] : [];
 
   const confirmDelete = async () => {
     if (!deleting) return;
@@ -395,6 +407,21 @@ export default function StudentsView({ store }: { store: Store }) {
                   <Trash2 className="size-3.5" /> 删除
                 </Button>
               </div>
+              {detailHonors.length > 0 ? (
+                <>
+                  <h3 className="mt-6 text-sm font-semibold">该生荣誉（{detailHonors.length}）</h3>
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {detailHonors.map((h) => (
+                      <li key={h.id}>
+                        <Badge variant="outline" className="border-transparent bg-amber-500/10 font-normal text-amber-700">
+                          {h.title}
+                          <span className="ml-1 text-[11px] text-muted-foreground">{h.level}{h.term ? ` · ${h.term}` : ""}</span>
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               <h3 className="mt-6 text-sm font-semibold">该生记录（{detailRecords.length}）</h3>
               {detailRecords.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">暂无记录。</p>
