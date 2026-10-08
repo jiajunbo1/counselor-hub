@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FileUp, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from "lucide-react";
+import { Download, FileUp, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import ImportDialog from "@/components/ImportDialog";
@@ -32,12 +32,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
-import type { AttendanceItem, AttendKind } from "@/lib/types";
+import type { AttendanceItem, AttendKind, Student } from "@/lib/types";
 import { ATTEND_KIND_LABEL, ATTEND_SOURCE_LABEL } from "@/lib/types";
-import { dedupeAttendance } from "@/lib/evaluation";
-import { normalizeDate } from "@/lib/import-export";
-import { ATTENDANCE_COLUMNS } from "@/lib/import-export";
-import { ALL, SegPills } from "./parts";
+import { dedupeAttendance, gradesOfTerm, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
+import { compareRankSortable, rankRowsByClass, type RankRow } from "@/lib/rank-view";
+import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
+import type { RankSortMode } from "@/lib/rank-view";
+import { ATTENDANCE_COLUMNS, exportCsv, normalizeDate } from "@/lib/import-export";
+import { ALL, SegPills, fmt1 } from "./parts";
 
 const KIND_TONE: Record<AttendKind, string> = {
   late: "pill-warning",
@@ -220,6 +222,9 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
   const [cls, setCls] = useState(ALL);
   const [term, setTerm] = useState(focusTerm ?? ALL);
   const [kind, setKind] = useState(ALL);
+  const [view, setView] = useState<"summary" | "detail">("summary");
+  const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
+  const [groupByClass, setGroupByClass] = useState(true);
   const [form, setForm] = useState<AttendanceItem | "new" | null>(null);
   const [importing, setImporting] = useState(false);
   const [showRules, setShowRules] = useState(false);
@@ -259,6 +264,76 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
 
   // 同一学生同一节课（课程+日期）只计一次扣分，台账如实标出哪条被计入
   const marks = useMemo(() => dedupeAttendance(store.attendance, store.evaluation), [store.attendance, store.evaluation]);
+
+  const studentsById = useMemo(() => new Map(store.students.map((s) => [s.id, s])), [store.students]);
+  const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
+  const evalByStudentTerm = useMemo(
+    () => new Map(store.termEvals.map((e) => [`${e.student_id}|${e.term}`, e])),
+    [store.termEvals]
+  );
+
+  // 名次只属于「某学生 + 某学期」，所以按人汇总以 (学生, 学期) 为一行；名次用全班该学期数据算，不受筛选影响
+  const rankByTerm = useMemo(() => {
+    const cache = new Map<string, Map<string, RankRow>>();
+    for (const t of [...new Set(filtered.map((a) => a.term))]) {
+      cache.set(
+        t,
+        rankRowsByClass(
+          store.students.map((s) => ({
+            student: s,
+            summary: summarizeTerm(
+              s,
+              t,
+              gradesOfTerm(store.grades, s.id, t),
+              evalByStudentTerm.get(`${s.id}|${t}`) ?? null,
+              coursesById,
+              store.attendance,
+              store.evaluation
+            ),
+          }))
+        )
+      );
+    }
+    return cache;
+  }, [filtered, store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm]);
+
+  const summaryRows = useMemo(() => {
+    const groups = new Map<string, { student: Student; term: string; items: AttendanceItem[] }>();
+    for (const a of filtered) {
+      const s = studentsById.get(a.student_id);
+      if (!s) continue;
+      const key = `${a.student_id}|${a.term}`;
+      const g = groups.get(key);
+      if (g) g.items.push(a);
+      else groups.set(key, { student: s, term: a.term, items: [a] });
+    }
+    const rows = [...groups.values()].map((g) => {
+      const { counts, deduct } = termAttendDeduct(g.student.id, g.term, store.attendance, store.evaluation);
+      return { ...g, counts, deduct, rankRow: rankByTerm.get(g.term)?.get(g.student.id) ?? null };
+    });
+    rows.sort(compareRankSortable(sortMode, groupByClass));
+    return rows;
+  }, [filtered, studentsById, store.attendance, store.evaluation, rankByTerm, sortMode, groupByClass]);
+
+  const exportSummary = () => {
+    if (summaryRows.length === 0) return toast.error("当前范围内没有考勤记录。");
+    exportCsv(
+      `考勤按人汇总-${cls === ALL ? "全部班级" : cls}-${term === ALL ? "全部学期" : term}.csv`,
+      ["名次", "学号", "姓名", "班级", "学期", "旷课", "迟到", "早退", "请假", "本学期扣分", "学期综合", "本次筛选条数"],
+      summaryRows.map((r) => [
+        r.rankRow ? `${r.rankRow.rank}/${r.rankRow.total}` : "未定",
+        r.student.student_no,
+        r.student.name,
+        r.student.class_name,
+        r.term || "未填学期",
+        String(r.counts.absent), String(r.counts.late), String(r.counts.early), String(r.counts.leave),
+        String(r.deduct),
+        r.rankRow?.composite != null ? String(r.rankRow.composite) : "",
+        String(r.items.length),
+      ])
+    );
+    toast.success("汇总表已开始下载。");
+  };
 
   // 人工改判：指定这节课按哪条扣分 / 本条不计 / 恢复自动
   const applyCounted = async (a: AttendanceItem, counted: boolean | null) => {
@@ -315,6 +390,16 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <div className="w-full sm:w-60">
+          <SegPills
+            options={[
+              { value: "summary", label: "按人汇总", count: summaryRows.length },
+              { value: "detail", label: "明细流水", count: filtered.length },
+            ]}
+            value={view}
+            onChange={(v) => setView(v === "detail" ? "detail" : "summary")}
+          />
+        </div>
         <div className="w-full sm:w-96">
           <SegPills
             options={[
@@ -325,12 +410,94 @@ export default function AttendanceView({ store, focusNo, focusTerm }: { store: S
             onChange={setKind}
           />
         </div>
-        <span className="text-xs text-muted-foreground">
-          {filtered.length} 条 · 综合分口径：考试 {store.evaluation.exam_weight}% / 平时 {store.evaluation.usual_weight}%（旷课扣 {store.evaluation.absent_deduct}、迟到早退扣 {store.evaluation.late_deduct}、请假扣 {store.evaluation.leave_deduct}）· 同一节课只按一条扣分
-        </span>
+        {view === "summary" ? (
+          <RankSortControl
+            mode={sortMode}
+            onMode={setSortMode}
+            options={sortOptionsFor(cls === ALL, true)}
+            groupByClass={groupByClass}
+            onGroupByClass={setGroupByClass}
+            showGroupToggle={cls === ALL && sortMode === "composite"}
+          />
+        ) : null}
+        {view === "summary" ? (
+          <Button variant="outline" size="sm" className="ml-auto" onClick={exportSummary}>
+            <Download className="size-4" /> 导出汇总
+          </Button>
+        ) : null}
       </div>
 
-      {filtered.length === 0 ? (
+      <p className="px-1 text-[11px] text-muted-foreground">
+        {view === "summary"
+          ? `${summaryRows.length} 人 · 当前${sortCaption(sortMode, groupByClass)}；旷/迟/早/假与扣分是该生该学期的整学期口径（不随类型筛选变化），类型筛选只决定哪些人进入这张表。`
+          : `${filtered.length} 条 · `}
+        综合分口径：考试 {store.evaluation.exam_weight}% / 平时 {store.evaluation.usual_weight}%（旷课扣 {store.evaluation.absent_deduct}、迟到早退扣 {store.evaluation.late_deduct}、请假扣 {store.evaluation.leave_deduct}）· 同一节课只按一条扣分
+      </p>
+
+      {view === "summary" ? (
+        summaryRows.length === 0 ? (
+          <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。" : "没有符合条件的考勤记录。"} />
+        ) : (
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-muted/40 text-left text-[11px] text-muted-foreground">
+                  <th className="sticky left-0 z-10 bg-card px-3 py-2 font-medium">姓名 / 学号</th>
+                  <th className="px-2 py-2 text-left font-medium">班级</th>
+                  <th className="px-2 py-2 text-left font-medium">学期</th>
+                  <th className="px-2 py-2 text-center font-medium">考勤（旷/迟/早/假）</th>
+                  <th className="px-2 py-2 text-center font-medium">扣分</th>
+                  <th className="px-2 py-2 text-center font-medium">学期综合</th>
+                  <th className="px-2 py-2 text-center font-medium">条数</th>
+                  <th className="px-2 py-2 text-center font-medium">明细</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryRows.map((r) => (
+                  <tr key={`${r.student.id}|${r.term}`} className="border-t">
+                    <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+                      <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                        {r.rankRow ? `#${r.rankRow.rank}/${r.rankRow.total}` : "未定"}
+                      </span>
+                      <span className="font-medium">{r.student.name}</span>
+                      <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.student.class_name || "未分班"}</td>
+                    <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.term || "未填学期"}</td>
+                    <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
+                      {r.counts.absent || r.counts.late || r.counts.early || r.counts.leave
+                        ? `${r.counts.absent}/${r.counts.late}/${r.counts.early}/${r.counts.leave}`
+                        : "满勤"}
+                    </td>
+                    <td className="px-2 py-1.5 text-center text-xs tabular-nums">
+                      {r.deduct > 0 ? <span className="font-semibold text-amber-600">-{fmt1(r.deduct)}</span> : <span className="text-muted-foreground">0</span>}
+                    </td>
+                    <td className="px-2 py-1.5 text-center text-sm font-semibold tabular-nums">
+                      {r.rankRow?.composite != null ? fmt1(r.rankRow.composite) : "–"}
+                    </td>
+                    <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">{r.items.length}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-primary"
+                        onClick={() => {
+                          setKeyword(r.student.student_no);
+                          setTerm(r.term || ALL);
+                          setKind(ALL);
+                          setView("detail");
+                        }}
+                      >
+                        看明细
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。" : "没有符合条件的考勤记录。"} />
       ) : (
         <ul className="space-y-2">

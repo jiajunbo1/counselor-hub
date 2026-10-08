@@ -45,16 +45,19 @@ export function Select({
   onValueChange,
   options,
   className,
+  ariaLabel,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string }[];
   className?: string;
+  ariaLabel?: string;
 }) {
   const encode = (v: string) => (v === "" ? NONE_VALUE : v);
   return (
     <RadixSelect value={encode(value)} onValueChange={(v) => onValueChange(v === NONE_VALUE ? "" : v)}>
       <SelectTrigger
+        aria-label={ariaLabel}
         // ui/select 的 *:data-[slot=select-value]:flex 会让长文本硬切无省略号，这里强制回退为可截断的块级
         className={cn(
           "w-full min-w-0 text-left [&>[data-slot=select-value]]:!inline-block [&>[data-slot=select-value]]:!truncate",

@@ -7,7 +7,9 @@ import { EmptyHint, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import type { Student } from "@/lib/types";
 import type { Grade } from "@/lib/types";
-import { rankSummaries, summarizeTerm, type TermSummary } from "@/lib/evaluation";
+import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
+import { compareRankSortable, rankRowsByClass, type RankRow, type RankSortMode } from "@/lib/rank-view";
+import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
 import { ALL, fmt1, HOT_CLASS, ScoreCell, termOptionsOf } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
@@ -102,6 +104,8 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
   const [keyword, setKeyword] = useState("");
   const [cls, setCls] = useState(ALL);
   const [term, setTerm] = useState(ALL);
+  const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
+  const [groupByClass, setGroupByClass] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
@@ -125,7 +129,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
 
   const groups = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    const out: { term: string; items: { summary: TermSummary; rank: number | null; total: number }[] }[] = [];
+    const out: { term: string; items: { student: Student; summary: TermSummary; rankRow: RankRow | null }[] }[] = [];
     for (const activeTerm of termsInRange) {
       const byStudent = new Map<string, Grade[]>();
       for (const g of store.grades) {
@@ -134,22 +138,15 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
         byStudent.get(g.student_id)!.push(g);
       }
       const list: TermSummary[] = [];
-      const byClass = new Map<string, TermSummary[]>();
       for (const s of store.students) {
         const gs = byStudent.get(s.id);
         if (!gs) continue;
         const sum = summarizeTerm(s, activeTerm, gs, evalByStudentTerm.get(`${s.id}|${activeTerm}`) ?? null, coursesById, store.attendance, store.evaluation);
         if (!sum) continue;
         list.push(sum);
-        const key = s.class_name || "未分班";
-        if (!byClass.has(key)) byClass.set(key, []);
-        byClass.get(key)!.push(sum);
       }
-      const rk = new Map<string, { rank: number; total: number }>();
-      for (const [, group] of byClass) {
-        const m = rankSummaries(group);
-        for (const g of group) rk.set(g.student.id, { rank: m.get(g.student.id) ?? 0, total: group.length });
-      }
+      // 名次始终用该学期全班算，搜索/班级筛选只决定显示哪些卡片
+      const rankOf = rankRowsByClass(list.map((summary) => ({ student: summary.student, summary })));
       const items = list
         .filter((summary) => {
           const s = summary.student;
@@ -157,12 +154,12 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
           if (kw && !`${s.name}${s.student_no}`.toLowerCase().includes(kw)) return false;
           return true;
         })
-        .sort((a, b) => a.student.class_name.localeCompare(b.student.class_name, "zh") || a.student.student_no.localeCompare(b.student.student_no))
-        .map((summary) => ({ summary, rank: rk.get(summary.student.id)?.rank ?? null, total: rk.get(summary.student.id)?.total ?? 0 }));
+        .map((summary) => ({ student: summary.student, summary, rankRow: rankOf.get(summary.student.id) ?? null }))
+        .sort(compareRankSortable(sortMode, groupByClass));
       if (items.length > 0) out.push({ term: activeTerm, items });
     }
     return out;
-  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, cls]);
+  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, cls, sortMode, groupByClass]);
 
   const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
 
@@ -182,8 +179,8 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
         </Button>
         <TranscriptDetail
           summary={selected.summary}
-          rank={selected.rank}
-          total={selected.total}
+          rank={selected.rankRow?.rank ?? null}
+          total={selected.rankRow?.total ?? 0}
           store={store}
           onDetail={setDetail}
         />
@@ -216,8 +213,16 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
         <div className="w-36 sm:w-44">
           <Select value={term} onValueChange={setTerm} options={termOptions} />
         </div>
+        <RankSortControl
+          mode={sortMode}
+          onMode={setSortMode}
+          options={sortOptionsFor(cls === ALL, true)}
+          groupByClass={groupByClass}
+          onGroupByClass={setGroupByClass}
+          showGroupToggle={cls === ALL && sortMode === "composite"}
+        />
         <span className="ml-auto text-xs text-muted-foreground">
-          {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term}
+          {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term} · 当前{sortCaption(sortMode, groupByClass)}
         </span>
       </div>
 
@@ -233,7 +238,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
               </div>
             ) : null}
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {g.items.map(({ summary, rank, total }) => {
+              {g.items.map(({ summary, rankRow }) => {
                 const s: Student = summary.student;
                 return (
                   <button
@@ -249,7 +254,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Trophy className="size-3.5" />
-                        {rank === null ? "–" : `${rank}/${total}`}
+                        {rankRow ? `${rankRow.rank}/${rankRow.total}` : "未定"}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{s.class_name || "未分班"} · {summary.rows.length} 门课</p>

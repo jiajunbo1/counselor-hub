@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import type { Grade } from "@/lib/types";
-import { rankSummaries, summarizeTerm, type TermSummary } from "@/lib/evaluation";
+import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
+import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
+import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
 import { exportCsv } from "@/lib/import-export";
 import { evalFormulaNote, fmt1, HOT_CLASS, ScoreCell } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
@@ -23,6 +25,8 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
   const defaultTerm = terms.length > 0 ? terms[terms.length - 1] : "";
   const [term, setTerm] = useState<string | null>(null);
   const [cls, setCls] = useState<string>("__all");
+  const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
+  const [groupByClass, setGroupByClass] = useState(true);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
 
   const activeTerm = term ?? defaultTerm;
@@ -48,30 +52,20 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
       .map((id) => ({ id, name: coursesById.get(id)?.name ?? "（课程已删除）", credit: coursesById.get(id)?.credit ?? "" }))
       .sort((a, b) => a.name.localeCompare(b.name, "zh"));
 
-    const rows = students
-      .map((s) => {
-        const gs = grades.filter((g) => g.student_id === s.id);
-        const cells = new Map<string, Grade>();
-        for (const g of gs) cells.set(g.course_id, g);
-        const summary: TermSummary | null = summarizeTerm(s, activeTerm, gs, evalByStudentTerm.get(`${s.id}|${activeTerm}`) ?? null, coursesById, store.attendance, store.evaluation);
-        return { student: s, cells, summary };
-      })
-      .sort((a, b) => a.student.class_name.localeCompare(b.student.class_name, "zh") || a.student.student_no.localeCompare(b.student.student_no));
+    const rows = students.map((s) => {
+      const gs = grades.filter((g) => g.student_id === s.id);
+      const cells = new Map<string, Grade>();
+      for (const g of gs) cells.set(g.course_id, g);
+      const summary: TermSummary | null = summarizeTerm(s, activeTerm, gs, evalByStudentTerm.get(`${s.id}|${activeTerm}`) ?? null, coursesById, store.attendance, store.evaluation);
+      return { student: s, cells, summary };
+    });
 
-    const ranks = new Map<string, { rank: number; total: number }>();
-    const byClass = new Map<string, TermSummary[]>();
-    for (const r of rows) {
-      if (!r.summary) continue;
-      const key = r.student.class_name || "未分班";
-      if (!byClass.has(key)) byClass.set(key, []);
-      byClass.get(key)!.push(r.summary);
-    }
-    for (const [, group] of byClass) {
-      const m = rankSummaries(group);
-      for (const g of group) ranks.set(g.student.id, { rank: m.get(g.student.id) ?? 0, total: group.length });
-    }
-    return { columns, rows, ranks };
-  }, [store.grades, store.students, store.attendance, store.evaluation, coursesById, evalByStudentTerm, activeTerm, cls]);
+    const rankOf = rankRowsByClass(rows);
+    const ranked = rows.map((r) => ({ ...r, rankRow: rankOf.get(r.student.id) ?? null }));
+    ranked.sort(compareRankSortable(sortMode, groupByClass));
+
+    return { columns, rows: ranked };
+  }, [store.grades, store.students, store.attendance, store.evaluation, coursesById, evalByStudentTerm, activeTerm, cls, sortMode, groupByClass]);
 
   const exportMatrix = () => {
     if (model.rows.length === 0) return toast.error("当前范围内没有成绩数据。");
@@ -79,7 +73,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
       `成绩公示-${activeTerm}-${cls === "__all" ? "全部班级" : cls}.csv`,
       ["学号", "姓名", "班级", ...model.columns.map((c) => c.name + (c.credit ? `(${c.credit})` : "")), "考试均分", "平时折算", "学期综合", "GPA", "排名"],
       model.rows.map((r) => {
-        const rk = model.ranks.get(r.student.id);
+        const rk = r.rankRow;
         return [
           r.student.student_no, r.student.name, r.student.class_name,
           ...model.columns.map((c) => {
@@ -106,6 +100,14 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
         <div className="w-32 sm:w-40">
           <Select value={cls} onValueChange={setCls} options={classOptions} />
         </div>
+        <RankSortControl
+          mode={sortMode}
+          onMode={setSortMode}
+          options={sortOptionsFor(cls === "__all", true)}
+          groupByClass={groupByClass}
+          onGroupByClass={setGroupByClass}
+          showGroupToggle={cls === "__all" && sortMode === "composite"}
+        />
         <Button variant="outline" size="sm" className="ml-auto" onClick={exportMatrix}>
           <Download className="size-4" /> 导出公示表
         </Button>
@@ -133,15 +135,15 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
                   <th className="px-2 py-2 text-center font-medium">平时</th>
                   <th className="px-2 py-2 text-center font-medium">综合</th>
                   <th className="px-2 py-2 text-center font-medium">GPA</th>
-                  <th className="px-2 py-2 text-center font-medium">排名</th>
                 </tr>
               </thead>
               <tbody>
                 {model.rows.map((r) => {
-                  const rk = model.ranks.get(r.student.id);
+                  const rk = r.rankRow;
                   return (
                     <tr key={r.student.id} className="border-t">
                       <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+                        <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{rk ? `#${rk.rank}/${rk.total}` : "未定"}</span>
                         <span className="font-medium">{r.student.name}</span>
                         <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
                       </td>
@@ -162,14 +164,15 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
                         {r.summary ? <HotValue onClick={() => setDetail({ kind: "term", student: r.student, term: activeTerm })}>{fmt1(r.summary.composite)}</HotValue> : "–"}
                       </td>
                       <td className="px-2 py-1.5 text-center tabular-nums">{r.summary?.gpa ?? "–"}</td>
-                      <td className="px-2 py-1.5 text-center text-xs tabular-nums">{rk ? `${rk.rank}/${rk.total}` : "–"}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p className="px-1 text-[11px] text-muted-foreground">{evalFormulaNote(store.evaluation)}，排名按学期综合分。</p>
+          <p className="px-1 text-[11px] text-muted-foreground">
+            {evalFormulaNote(store.evaluation)}，排名按学期综合分 · 当前{sortCaption(sortMode, groupByClass)}。
+          </p>
         </>
       )}
       {detail ? (
