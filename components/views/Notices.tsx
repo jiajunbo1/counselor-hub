@@ -139,7 +139,15 @@ export function NoticesAdminView({ store }: { store: Store }) {
       </div>
 
       {store.changelog.length === 0 ? (
-        <EmptyHint text="还没有发布过更新公告。" />
+        <EmptyHint
+          text="还没有发布过更新公告。"
+          icon={<Megaphone className="size-5 text-white" />}
+          action={
+            <Button size="sm" onClick={() => setEditing({ title: "", body: "", audience: "all" })}>
+              <Megaphone className="size-4" /> 发布公告
+            </Button>
+          }
+        />
       ) : (
         <ul className="space-y-2">
           {store.changelog.map((c) => (

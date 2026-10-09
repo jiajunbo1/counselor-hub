@@ -24,6 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { EmptyHint, FormField, Select, DateInput } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
+import { TableShell } from "@/components/list-table";
 import { ALL, SegPills, fmt1 } from "@/components/views/grades/parts";
 import { ApiError, apiPost } from "@/lib/api";
 import { exportCsv } from "@/lib/import-export";
@@ -432,7 +434,7 @@ function LedgerPanel({ store }: { store: Store }) {
             : status === "active" ? "没有符合条件的现行荣誉。" : "没有历史留档的荣誉记录。"}
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <TableShell>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[11px] text-muted-foreground">
@@ -481,7 +483,7 @@ function LedgerPanel({ store }: { store: Store }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
       <p className="px-1 text-[11px] text-muted-foreground">误录的荣誉请先撤销转入历史留档，再在留档中删除。</p>
 
@@ -660,7 +662,7 @@ function GrantPanel({ store }: { store: Store }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border bg-card p-4 shadow-xs">
+      <SectionCard title="授予条件">
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="学期" required>
             <div className="flex h-9 items-center justify-between rounded-md border bg-muted/40 px-3 text-sm">
@@ -783,7 +785,7 @@ function GrantPanel({ store }: { store: Store }) {
             </p>
           </div>
         ) : null}
-      </div>
+      </SectionCard>
 
       {shown === null ? (
         <EmptyHint text="设好条件后点「按条件推荐」，名单会自动勾选，可再逐个调整。" />
@@ -806,9 +808,9 @@ function GrantPanel({ store }: { store: Store }) {
           </div>
           {byClass.map(([className, items]) => (
             <section key={className}>
-              <div className="mb-1.5 flex items-center gap-2">
-                <h3 className="text-sm font-semibold">{className}</h3>
-                <span className="text-xs text-muted-foreground">{items.length} 人符合</span>
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="min-w-0 truncate text-sm font-semibold">{className}</h3>
+                <span className="num shrink-0 text-xs text-muted-foreground">{items.length} 人符合</span>
               </div>
               <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
                 {items.map((r) => {

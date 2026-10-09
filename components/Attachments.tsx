@@ -63,7 +63,7 @@ function AttachmentViewer({ att, onClose }: { att: Attachment; onClose: () => vo
             <Download className="size-3.5" /> 下载
           </Button>
         </div>
-        <div className="max-h-[70vh] overflow-auto rounded-lg border bg-muted/40 p-2">
+        <div className="scroll-surface max-h-[70vh] overflow-auto rounded-lg border bg-muted/40 p-2">
           {url ? (
             <img
               src={url}

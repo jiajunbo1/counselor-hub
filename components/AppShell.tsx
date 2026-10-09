@@ -266,6 +266,9 @@ function Workspace({ auth }: { auth: Auth }) {
     ) : null;
 
   const initial = member.display_name?.trim()?.slice(0, 1) || "?";
+  // 品牌位按角色取名：学生端顶着一个「辅导员工作台」会让人以为进错了系统
+  const brandTitle = isStudent ? "学生中心" : "辅导员工作台";
+  const brandSub = isStudent ? "成绩 · 请假 · 留言" : "学生工作信息管理";
 
   return (
     <div className="min-h-dvh md:flex">
@@ -278,8 +281,8 @@ function Workspace({ auth }: { auth: Auth }) {
             <GraduationCap className="size-5" />
           </span>
           <div className="min-w-0">
-            <div className="text-gradient text-base font-extrabold tracking-tight">辅导员工作台</div>
-            <div className="truncate text-[11px] text-muted-foreground">学生工作信息管理</div>
+            <div className="text-gradient text-base font-extrabold tracking-tight">{brandTitle}</div>
+            <div className="truncate text-[11px] text-muted-foreground">{brandSub}</div>
           </div>
           <div className="ml-auto shrink-0">
             <ChangelogBell memberId={member.id} entries={store.changelog} />
@@ -386,36 +389,35 @@ function Workspace({ auth }: { auth: Auth }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass-surface sticky top-0 z-20 flex items-center justify-between gap-3 border-b px-4 py-3 md:hidden">
-          <div className="flex items-center gap-2">
-            <span
-              className="flex size-7 items-center justify-center rounded-lg text-white"
-              style={{ backgroundImage: "var(--grad-primary)" }}
-            >
-              <GraduationCap className="size-4" />
-            </span>
-            <span className="text-sm font-bold">辅导员工作台</span>
+        <header className="glass-surface sticky top-0 z-20 border-b md:hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="flex size-7 items-center justify-center rounded-lg text-white"
+                style={{ backgroundImage: "var(--grad-primary)" }}
+              >
+                <GraduationCap className="size-4" />
+              </span>
+              <span className="text-sm font-bold">{brandTitle}</span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <ChangelogBell memberId={member.id} entries={store.changelog} />
+              <AppearanceMenu />
+              <Button variant="ghost" size="icon" onClick={() => void store.refresh()} aria-label="刷新数据">
+                <RefreshCw className="size-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => void auth.logout()} aria-label="退出登录">
+                <LogOut className="size-4" />
+              </Button>
+            </div>
           </div>
+          {/* 作用域单独一行：原先挤在品牌和功能键之间，两个下拉各只有 ~7rem 宽，班名一长就看不出当前选的是谁 */}
           {!isStudent ? (
-            <div className="flex min-w-0 max-w-[13rem] flex-1 items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <Select value={scope.cls} onValueChange={scope.setCls} options={classOptions} ariaLabel="班级作用域" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <Select value={termScope.term || ALL_TERM} onValueChange={termScope.setTerm} options={termOptions} ariaLabel="学期作用域" />
-              </div>
+            <div className="grid grid-cols-2 gap-2 px-4 pb-3">
+              <Select value={scope.cls} onValueChange={scope.setCls} options={classOptions} ariaLabel="班级作用域" />
+              <Select value={termScope.term || ALL_TERM} onValueChange={termScope.setTerm} options={termOptions} ariaLabel="学期作用域" />
             </div>
           ) : null}
-          <div className="flex items-center gap-0.5">
-            <ChangelogBell memberId={member.id} entries={store.changelog} />
-            <AppearanceMenu />
-            <Button variant="ghost" size="icon" onClick={() => void store.refresh()} aria-label="刷新数据">
-              <RefreshCw className="size-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => void auth.logout()} aria-label="退出登录">
-              <LogOut className="size-4" />
-            </Button>
-          </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-5 md:px-8 md:pb-10 md:pt-8">
           {store.loading ? (
@@ -423,10 +425,10 @@ function Workspace({ auth }: { auth: Auth }) {
               <Skeleton className="h-8 w-40" />
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-2xl" />
+                  <Skeleton key={i} className="h-24 rounded-xl" />
                 ))}
               </div>
-              <Skeleton className="h-48 rounded-2xl" />
+              <Skeleton className="h-48 rounded-xl" />
             </div>
           ) : store.error ? (
             <div className="flex flex-col items-center gap-3 py-24 text-center">
@@ -504,7 +506,7 @@ function Workspace({ auth }: { auth: Auth }) {
                 >
                   <Icon className="size-5" />
                   {badge(id) ? (
-                    <span className="absolute right-1 top-0 rounded-full bg-destructive px-1 text-[9px] font-semibold leading-3.5 text-white">
+                    <span className="absolute right-1 top-0 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-3.5 text-white">
                       {id === "leaves" ? pendingCount : openMsgCount}
                     </span>
                   ) : null}
@@ -529,7 +531,7 @@ function Workspace({ auth }: { auth: Auth }) {
               >
                 <Ellipsis className="size-5" />
                 {mobileRestTabs.some((t) => t.id === "messages") && openMsgCount > 0 ? (
-                  <span className="absolute right-1 top-0 rounded-full bg-destructive px-1 text-[9px] font-semibold leading-3.5 text-white">
+                  <span className="absolute right-1 top-0 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-3.5 text-white">
                     {openMsgCount}
                   </span>
                 ) : null}

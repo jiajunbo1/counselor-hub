@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useFlash } from "@/components/motion";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -26,6 +27,7 @@ import {
 import { EmptyHint, FormField, Select, DateInput } from "@/components/form";
 import { Switch } from "@/components/ui/switch";
 import { ALL, SegPills } from "@/components/views/grades/parts";
+import { TableShell } from "@/components/list-table";
 import type { Store } from "@/hooks/use-store";
 import { inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { PositionItem } from "@/lib/types";
@@ -178,8 +180,10 @@ function AppointmentDialog({ store, onClose }: { store: Store; onClose: () => vo
 }
 
 function PositionCard({ p, onRevoke, onToggleReport, toggling }: { p: PositionItem; onRevoke: () => void; onToggleReport: (next: boolean) => void; toggling: boolean }) {
+  // 开关写入后名单是整表刷新的，行不会重挂；闪光用来确认「这一下存下来了」
+  const flash = useFlash(p.attend_report === true);
   return (
-    <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
+    <div className={"rounded-xl border bg-card px-4 py-3 shadow-xs " + flash}>
       <div className="flex items-center gap-2">
         <span
           className="flex size-8 shrink-0 items-center justify-center rounded-lg text-white"
@@ -311,17 +315,25 @@ export default function PositionsView({ store }: { store: Store }) {
 
       {filtered.length === 0 ? (
         <EmptyHint
+          icon={<Award className="size-5 text-white" />}
           text={seg === "active"
             ? (store.positions.length === 0 ? "还没有委任记录。" : "没有符合条件的现任职务。")
             : "没有历史撤销的职务记录。"}
+          action={
+            seg === "active" && store.positions.length === 0 ? (
+              <Button size="sm" onClick={() => setAppointing(true)}>
+                <Plus className="size-4" /> 委任职务
+              </Button>
+            ) : undefined
+          }
         />
       ) : seg === "active" ? (
         <div className="space-y-4">
           {byClass.map(([className, items]) => (
             <section key={className}>
-              <div className="mb-1.5 flex items-center gap-2">
-                <h3 className="text-sm font-semibold">{className}</h3>
-                <span className="text-xs text-muted-foreground">{items.length} 个职务</span>
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="min-w-0 truncate text-sm font-semibold">{className}</h3>
+                <span className="num shrink-0 text-xs text-muted-foreground">{items.length} 个职务</span>
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {items.map((p) => (
@@ -338,7 +350,7 @@ export default function PositionsView({ store }: { store: Store }) {
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <TableShell>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[11px] text-muted-foreground">
@@ -368,7 +380,7 @@ export default function PositionsView({ store }: { store: Store }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
 
       {appointing ? <AppointmentDialog store={store} onClose={() => setAppointing(false)} /> : null}

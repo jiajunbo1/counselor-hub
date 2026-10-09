@@ -135,7 +135,7 @@ export default function ImportDialog(props: ImportDialogProps) {
               共 {rows.length} 行，可导入 {validRows.length} 行
               {rows.length - validRows.length > 0 ? `，${rows.length - validRows.length} 行将被跳过` : ""}。预览前 20 行：
             </p>
-            <div className="max-h-64 overflow-auto rounded-lg border">
+            <div className="scroll-surface max-h-64 overflow-auto rounded-lg border">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-muted/70">
                   <tr>

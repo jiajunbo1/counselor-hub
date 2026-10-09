@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
+import { SectionCard } from "@/components/section-card";
 import { EmptyHint } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
@@ -89,34 +90,30 @@ export default function StudentGradesView({ store, member }: { store: Store; mem
       {groups.length === 0 ? (
         <EmptyHint text="辅导员还没有登记成绩。" />
       ) : (
-        <div className="space-y-3">
+        <div className="stack-page">
           {groups.map((g) => (
-            <div key={g.term || "__none"} className="rounded-xl border bg-card px-4 py-3 shadow-xs">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Badge variant="outline" className="shrink-0 font-normal">
-                  {g.term || "未标学期"}
-                </Badge>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{g.rows.length} 门</span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  考试均分 {g.examAvg} · 学期综合 {g.composite}
-                  {g.gpa !== null ? ` · 绩点 ${g.gpa.toFixed(2)}` : ""}
-                </span>
-              </div>
-              <ul className="mt-2 divide-y divide-dashed">
+            <SectionCard
+              key={g.term || "__none"}
+              title={g.term || "未标学期"}
+              subtitle={`考试均分 ${g.examAvg} · 学期综合 ${g.composite}${g.gpa !== null ? ` · 绩点 ${g.gpa.toFixed(2)}` : ""}`}
+              count={`${g.rows.length} 门`}
+              padded={false}
+            >
+              <ul>
                 {g.rows.map((r) => (
-                  <li key={r.grade.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <li key={r.grade.id} className="flex items-center justify-between gap-3 border-t px-4 py-2.5 text-sm first:border-t-0">
                     <span className="min-w-0 truncate">
                       {r.course?.name ?? "未关联课程"}
                       {r.credit > 0 ? <span className="ml-1 text-xs text-muted-foreground">{r.credit} 学分</span> : null}
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {!r.pass ? <Badge variant="outline" className="border-transparent bg-destructive/10 font-normal text-destructive">不及格</Badge> : null}
-                      <span className={"tabular-nums font-medium " + (r.pass ? "" : "text-destructive")}>{r.grade.score}</span>
+                      <span className={"num font-semibold " + (r.pass ? "" : "text-destructive")}>{r.grade.score}</span>
                     </span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </SectionCard>
           ))}
         </div>
       )}

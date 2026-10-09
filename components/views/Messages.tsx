@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyHint, FormField } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
 import { ApiError, apiPost } from "@/lib/api";
@@ -192,22 +193,22 @@ export default function MessagesView({
       </div>
 
       {isStudent ? (
-        <div className="rounded-xl border bg-card p-3 shadow-xs">
-          <FormField label="给辅导员留言" required>
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={3}
-              maxLength={1000}
-              placeholder="写下您想咨询的事情…"
-            />
-          </FormField>
-          <div className="mt-2 flex justify-end">
+        <SectionCard
+          title="给辅导员留言"
+          action={
             <Button size="sm" disabled={busy} onClick={() => void send()}>
               <Send className="size-3.5" /> {busy ? "发送中…" : "发送留言"}
             </Button>
-          </div>
-        </div>
+          }
+        >
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={4}
+            maxLength={1000}
+            placeholder="写下您想咨询的事情…"
+          />
+        </SectionCard>
       ) : null}
 
       {list.length === 0 ? (

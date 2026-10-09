@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { BedDouble, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { EmptyHint, FormField, Select } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
 import type { Store } from "@/hooks/use-store";
 import type { Room } from "@/lib/types";
 
@@ -245,33 +246,51 @@ export default function DormsView({ store }: { store: Store }) {
       </div>
 
       {filteredRooms.length === 0 ? (
-        <EmptyHint text={rooms.length === 0 ? "还没有宿舍房间。" : "该楼栋下暂无房间。"} />
+        <EmptyHint
+          text={rooms.length === 0 ? "还没有宿舍房间。" : "该楼栋下暂无房间。"}
+          icon={<BedDouble className="size-5 text-white" />}
+          action={
+            <Button size="sm" onClick={() => setRoomForm("new")}>
+              <Plus className="size-4" /> 添加房间
+            </Button>
+          }
+        />
       ) : (
         grouped.map(([name, list]) => (
           <div key={name}>
-            <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{name}</h2>
+            <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <span className="min-w-0 truncate">{name}</span>
+              <span className="num shrink-0 text-xs font-normal text-muted-foreground">{list.length} 间</span>
+            </h2>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {list.map((room) => {
                 const occupantByBed = new Map(room.students.map((s) => [s.bed_no, s]));
                 return (
-                  <div key={room.id} className="rounded-xl border bg-card p-4 shadow-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{room.room_no}</span>
-                        <Badge variant="secondary" className="font-normal">{room.room_gender === "不限" ? "不限" : `${room.room_gender}宿舍`}</Badge>
-                        <span className="text-xs tabular-nums text-muted-foreground">{room.students.length}/{room.capacity}</span>
-                      </div>
-                      <div className="flex">
+                  <SectionCard
+                    key={room.id}
+                    title={
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate">{room.room_no}</span>
+                        <Badge variant="secondary" className="shrink-0 font-normal">
+                          {room.room_gender === "不限" ? "不限" : `${room.room_gender}宿舍`}
+                        </Badge>
+                      </span>
+                    }
+                    subtitle={room.note}
+                    count={`${room.students.length}/${room.capacity}`}
+                    action={
+                      <>
                         <Button variant="ghost" size="icon" aria-label="编辑房间" onClick={() => setRoomForm(room)}>
                           <Pencil className="size-4" />
                         </Button>
                         <Button variant="ghost" size="icon" aria-label="删除房间" onClick={() => setDeletingRoom(room)}>
                           <Trash2 className="size-4" />
                         </Button>
-                      </div>
-                    </div>
-                    {room.note ? <p className="mt-1 text-xs text-muted-foreground">{room.note}</p> : null}
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      </>
+                    }
+                    bodyClassName="p-3"
+                  >
+                    <div className="grid grid-cols-2 gap-2">
                       {Array.from({ length: room.capacity }, (_, i) => i + 1).map((bed) => {
                         const occupant = occupantByBed.get(bed);
                         return occupant ? (
@@ -312,7 +331,7 @@ export default function DormsView({ store }: { store: Store }) {
                         );
                       })}
                     </div>
-                  </div>
+                  </SectionCard>
                 );
               })}
             </div>

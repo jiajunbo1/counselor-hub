@@ -3,6 +3,7 @@ import { Download, FileUp, MoreHorizontal, Pencil, Plus, Search, Settings2, Tras
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import ImportDialog from "@/components/ImportDialog";
+import { TableShell, THead, Th, TRow, Td } from "@/components/list-table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -427,45 +428,45 @@ export default function AttendanceView({ store, focusNo }: { store: Store; focus
         summaryRows.length === 0 ? (
           <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。" : "没有符合条件的考勤记录。"} />
         ) : (
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
+          <TableShell>
             <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-muted/40 text-left text-[11px] text-muted-foreground">
-                  <th className="sticky left-0 z-10 bg-card px-3 py-2 font-medium">姓名 / 学号</th>
-                  <th className="px-2 py-2 text-left font-medium">班级</th>
-                  <th className="px-2 py-2 text-left font-medium">学期</th>
-                  <th className="px-2 py-2 text-center font-medium">考勤（旷/迟/早/假）</th>
-                  <th className="px-2 py-2 text-center font-medium">扣分</th>
-                  <th className="px-2 py-2 text-center font-medium">学期综合</th>
-                  <th className="px-2 py-2 text-center font-medium">条数</th>
-                  <th className="px-2 py-2 text-center font-medium">明细</th>
+              <THead>
+                <tr className="text-left">
+                  <Th className="col-sticky-left">姓名 / 学号</Th>
+                  <Th>班级</Th>
+                  <Th>学期</Th>
+                  <Th align="center">考勤（旷/迟/早/假）</Th>
+                  <Th align="center">扣分</Th>
+                  <Th align="center">学期综合</Th>
+                  <Th align="center">条数</Th>
+                  <Th align="center">明细</Th>
                 </tr>
-              </thead>
+              </THead>
               <tbody>
                 {summaryRows.map((r) => (
-                  <tr key={`${r.student.id}|${r.term}`} className="border-t">
-                    <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
-                      <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                  <TRow key={`${r.student.id}|${r.term}`}>
+                    <Td className="col-sticky-left">
+                      <span className="num mr-1.5 text-xs font-semibold text-muted-foreground">
                         {r.rankRow ? `#${r.rankRow.rank}/${r.rankRow.total}` : "未定"}
                       </span>
                       <span className="font-medium">{r.student.name}</span>
                       <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
-                    </td>
-                    <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.student.class_name || "未分班"}</td>
-                    <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.term || "未填学期"}</td>
-                    <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
+                    </Td>
+                    <Td muted>{r.student.class_name || "未分班"}</Td>
+                    <Td muted>{r.term || "未填学期"}</Td>
+                    <Td align="center" className="num text-xs text-muted-foreground">
                       {r.counts.absent || r.counts.late || r.counts.early || r.counts.leave
                         ? `${r.counts.absent}/${r.counts.late}/${r.counts.early}/${r.counts.leave}`
                         : "满勤"}
-                    </td>
-                    <td className="px-2 py-1.5 text-center text-xs tabular-nums">
+                    </Td>
+                    <Td align="center" className="num">
                       {r.deduct > 0 ? <span className="font-semibold text-amber-600">-{fmt1(r.deduct)}</span> : <span className="text-muted-foreground">0</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-center text-sm font-semibold tabular-nums">
+                    </Td>
+                    <Td align="right" numeric className="font-semibold">
                       {r.rankRow?.composite != null ? fmt1(r.rankRow.composite) : "–"}
-                    </td>
-                    <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">{r.items.length}</td>
-                    <td className="px-2 py-1.5 text-center">
+                    </Td>
+                    <Td align="center" className="num text-xs text-muted-foreground">{r.items.length}</Td>
+                    <Td align="center" className="p-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -479,12 +480,12 @@ export default function AttendanceView({ store, focusNo }: { store: Store; focus
                       >
                         看明细
                       </Button>
-                    </td>
-                  </tr>
+                    </Td>
+                  </TRow>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableShell>
         )
       ) : filtered.length === 0 ? (
         <EmptyHint text={store.attendance.length === 0 ? "还没有考勤记录。" : "没有符合条件的考勤记录。"} />

@@ -141,15 +141,15 @@ export default function LoginView({ onLookup, onLogin, onBootstrap, onStudentReg
       <div className="relative w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <span
-            className="mb-3 flex size-14 items-center justify-center rounded-2xl text-white"
+            className="mb-3 flex size-14 items-center justify-center rounded-xl text-white"
             style={{ backgroundImage: "var(--grad-primary)", boxShadow: "var(--shadow-glow)" }}
           >
             <GraduationCap className="size-7" />
           </span>
           <div className="text-gradient text-2xl font-extrabold tracking-tight">辅导员学生工作平台</div>
         </div>
-        <Card className="rounded-2xl">
-          <CardHeader>
+        <Card className="gap-0 rounded-xl py-5">
+          <CardHeader className="px-5 pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               {isBootstrap ? <ShieldCheck className="size-4" /> : isRegister ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
               {isBootstrap
@@ -172,7 +172,7 @@ export default function LoginView({ onLookup, onLogin, onBootstrap, onStudentReg
               </CardDescription>
             ) : null}
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 px-5">
             {isPasswordStep ? (
               <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2 text-sm">
                 <span className="truncate">

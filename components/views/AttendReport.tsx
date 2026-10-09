@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { SectionCard } from "@/components/section-card";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import { ALL, SegPills } from "@/components/views/grades/parts";
 import type { Store } from "@/hooks/use-store";
@@ -148,11 +148,8 @@ export default function AttendReportView({ store, member }: { store: Store; memb
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="px-4 pb-2">
-          <CardTitle className="text-sm">本节登记内容</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 px-4">
+      <SectionCard title="本节登记内容">
+        <div className="space-y-3">
           <SegPills
             options={KINDS.map((k) => ({ value: k, label: ATTEND_KIND_LABEL[k] }))}
             value={kind}
@@ -172,99 +169,93 @@ export default function AttendReportView({ store, member }: { store: Store; memb
               <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="选填，200 字以内" maxLength={200} />
             </FormField>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader className="px-4 pb-2">
-          <CardTitle className="text-sm">本班同学</CardTitle>
-          <CardDescription className="text-xs">已选 {selected.size} 人{loading ? " · 名单加载中…" : ""}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-4">
-          {loading && roster.length === 0 ? (
-            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> 正在读取本班名单…
-            </div>
-          ) : roster.length === 0 ? (
-            <EmptyHint text="本班暂无其他同学，若名单有遗漏请联系辅导员完善档案。" />
-          ) : (
-            <ul className="grid gap-1.5 sm:grid-cols-2">
-              {roster.map((s) => {
-                const on = selected.has(s.id);
-                return (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(s.id)}
-                      className={
-                        "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors " +
-                        (on ? "border-primary bg-primary/5" : "hover:bg-accent/40")
-                      }
-                    >
-                      <span
-                        className={
-                          "flex size-5 shrink-0 items-center justify-center rounded-md border " +
-                          (on ? "border-transparent bg-primary text-primary-foreground" : "border-input")
-                        }
-                        aria-hidden
-                      >
-                        {on ? <Check className="size-3.5" /> : null}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-sm">{s.name}</span>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{s.student_no}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" disabled={busy || selected.size === 0} onClick={() => void submit()}>
-              <Send className="size-4" /> {busy ? "提交中…" : `上报 ${selected.size} 人${ATTEND_KIND_LABEL[kind]}`}
-            </Button>
-            {selected.size > 0 ? (
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setSelected(new Set())}>
-                清空勾选
-              </Button>
-            ) : null}
+      <SectionCard
+        title="本班同学"
+        count={`已选 ${selected.size} 人`}
+        subtitle={loading ? "名单加载中…" : undefined}
+      >
+        {loading && roster.length === 0 ? (
+          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> 正在读取本班名单…
           </div>
-        </CardContent>
-      </Card>
+        ) : roster.length === 0 ? (
+          <EmptyHint text="本班暂无其他同学，若名单有遗漏请联系辅导员完善档案。" />
+        ) : (
+          <ul className="grid gap-1.5 sm:grid-cols-2">
+            {roster.map((s) => {
+              const on = selected.has(s.id);
+              return (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggle(s.id)}
+                    className={
+                      "flex w-full items-center gap-2 rounded-[var(--r-chip)] border px-3 py-2 text-left transition-colors " +
+                      (on ? "border-primary bg-primary/5" : "hover:bg-accent/40")
+                    }
+                  >
+                    <span
+                      className={
+                        "flex size-5 shrink-0 items-center justify-center rounded-md border " +
+                        (on ? "border-transparent bg-primary text-primary-foreground" : "border-input")
+                      }
+                      aria-hidden
+                    >
+                      {on ? <Check className="size-3.5" /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{s.name}</span>
+                    <span className="num shrink-0 text-xs text-muted-foreground">{s.student_no}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="mt-3 flex items-center gap-2">
+          <Button size="sm" disabled={busy || selected.size === 0} onClick={() => void submit()}>
+            <Send className="size-4" /> {busy ? "提交中…" : `上报 ${selected.size} 人${ATTEND_KIND_LABEL[kind]}`}
+          </Button>
+          {selected.size > 0 ? (
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setSelected(new Set())}>
+              清空勾选
+            </Button>
+          ) : null}
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader className="px-4 pb-2">
-          <CardTitle className="text-sm">我上报的记录</CardTitle>
-          <CardDescription className="text-xs">
-            共 {myReports.length} 条。辅导员可修改或删除已上报记录。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-4">
-          {myReports.length === 0 ? (
-            <EmptyHint text="还没有上报过考勤。" />
-          ) : (
-            <ul className="divide-y">
-              {myReports.map((a) => {
-                const mark = marks.get(a.id);
-                return (
-                  <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm">
-                    <span className="w-20 shrink-0 font-medium">{a.student_name}</span>
-                    <Badge variant="outline" className="shrink-0 font-normal">{ATTEND_KIND_LABEL[a.kind]}</Badge>
-                    <span className="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{a.occurred_on}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{a.course_name || a.term || "未关联课程"}</span>
-                    {mark && !mark.counted ? (
-                      <span className="shrink-0 text-xs text-amber-600">
-                        {mark.manual ? "辅导员已把这条改为不计扣分" : "与同节课其他记录重复·不重复扣分"}
-                      </span>
-                    ) : mark?.manual ? (
-                      <span className="shrink-0 text-xs text-primary">辅导员已指定按这条扣分</span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <SectionCard
+        title="我上报的记录"
+        count={myReports.length}
+        subtitle="辅导员可修改或删除已上报记录。"
+      >
+        {myReports.length === 0 ? (
+          <EmptyHint text="还没有上报过考勤。" />
+        ) : (
+          <ul className="divide-y">
+            {myReports.map((a) => {
+              const mark = marks.get(a.id);
+              return (
+                <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm">
+                  <span className="w-20 shrink-0 font-medium">{a.student_name}</span>
+                  <Badge variant="outline" className="shrink-0 font-normal">{ATTEND_KIND_LABEL[a.kind]}</Badge>
+                  <span className="num w-24 shrink-0 text-xs text-muted-foreground">{a.occurred_on}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{a.course_name || a.term || "未关联课程"}</span>
+                  {mark && !mark.counted ? (
+                    <span className="shrink-0 text-xs text-amber-600">
+                      {mark.manual ? "辅导员已把这条改为不计扣分" : "与同节课其他记录重复·不重复扣分"}
+                    </span>
+                  ) : mark?.manual ? (
+                    <span className="shrink-0 text-xs text-primary">辅导员已指定按这条扣分</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SectionCard>
     </div>
   );
 }

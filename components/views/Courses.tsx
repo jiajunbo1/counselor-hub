@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { EmptyHint, FormField } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import type { Store } from "@/hooks/use-store";
 import type { Course } from "@/lib/types";
@@ -149,34 +150,40 @@ export default function CoursesView({ store }: { store: Store }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={courses.length === 0 ? "还没有课程。" : "该班级暂无课程记录。"} />
+        <EmptyHint
+          text={courses.length === 0 ? "还没有课程。" : "该班级暂无课程记录。"}
+          icon={<BookOpen className="size-5 text-white" />}
+          action={
+            <Button size="sm" onClick={() => setFormCourse("new")}>
+              <Plus className="size-4" /> 添加课程
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map((c) => (
-            <div key={c.id} className="rounded-xl border bg-card p-4 shadow-xs">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{c.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {c.course_code ? `${c.course_code} · ` : ""}{c.teacher || "未填教师"} · {c.credit} 学分
-                  </p>
-                </div>
-                <div className="flex shrink-0">
+            <SectionCard
+              key={c.id}
+              title={c.name}
+              subtitle={`${c.course_code ? `${c.course_code} · ` : ""}${c.teacher || "未填教师"} · ${c.credit} 学分`}
+              action={
+                <>
                   <Button variant="ghost" size="icon" aria-label="编辑课程" onClick={() => setFormCourse(c)}>
                     <Pencil className="size-4" />
                   </Button>
                   <Button variant="ghost" size="icon" aria-label="删除课程" onClick={() => setDeleting(c)}>
                     <Trash2 className="size-4" />
                   </Button>
-                </div>
-              </div>
-              <div className="mt-3 space-y-1 text-sm">
+                </>
+              }
+            >
+              <div className="space-y-1 text-sm">
                 {c.class_name ? <p><span className="text-muted-foreground">班级：</span>{c.class_name}</p> : null}
                 {c.schedule ? <p><span className="text-muted-foreground">时间：</span>{c.schedule}</p> : null}
                 {c.classroom ? <p><span className="text-muted-foreground">地点：</span>{c.classroom}</p> : null}
               </div>
               {c.semester ? <Badge variant="outline" className="mt-2 font-normal">{c.semester}</Badge> : null}
-            </div>
+            </SectionCard>
           ))}
         </div>
       )}

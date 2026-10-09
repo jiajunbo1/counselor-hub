@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Trash2, FileUp, Pencil, Plus, Search } from "lucide-react";
+import { Trash2, FileUp, Pencil, Plus, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -256,14 +256,24 @@ export default function StudentsView({ store }: { store: Store }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={students.length === 0 ? "还没有学生档案。" : "没有符合筛选条件的学生。"} />
+        <EmptyHint
+          text={students.length === 0 ? "还没有学生档案。" : "没有符合筛选条件的学生。"}
+          icon={<Users className="size-5 text-white" />}
+          action={
+            students.length === 0 ? (
+              <Button size="sm" onClick={() => setFormStudent("new")}>
+                <Plus className="size-4" /> 添加学生
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className="space-y-2">
           {filtered.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl border bg-card py-2.5 pl-3 pr-4 text-left shadow-xs transition-colors hover:bg-accent/40"
+                className="row-interactive flex w-full items-center gap-3 rounded-xl border bg-card py-2.5 pl-3 pr-4 text-left shadow-xs"
                 onClick={() => setDetailId(s.id)}
               >
                 <PhotoAvatar studentId={s.id} name={s.name} photo={photoByStudent.get(s.id) ?? null} />

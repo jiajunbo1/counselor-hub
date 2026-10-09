@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyHint } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
+import { TableShell } from "@/components/list-table";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import { termNow, useTermScope } from "@/hooks/use-term-scope";
@@ -19,7 +21,7 @@ function StatTile({ label, value, sub, onClick }: { label: string; value: string
   const inner = (
     <>
       <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold leading-tight tabular-nums">{value}</p>
+      <p className="num text-xl leading-tight font-bold">{value}</p>
       {sub ? <p className="text-[11px] text-muted-foreground">{sub}</p> : null}
     </>
   );
@@ -38,12 +40,11 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
   const openTerm = () => onDetail({ kind: "term", student: s, term: summary.term });
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border bg-card p-4 shadow-xs">
-        <p className="text-sm font-bold">
-          {s.name}
-          <span className="ml-1.5 text-xs font-normal text-muted-foreground">{s.student_no} · {s.class_name || "未分班"} · {summary.term}</span>
-        </p>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <SectionCard
+        title={s.name}
+        subtitle={`${s.student_no} · ${s.class_name || "未分班"} · ${summary.term}`}
+      >
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <StatTile label="学期综合" value={fmt1(summary.composite)} sub="点击看明细" onClick={openTerm} />
           <StatTile label="考试均分" value={fmt1(summary.examAvg)} sub="学分加权" />
           <StatTile label="GPA" value={summary.gpa === null ? "–" : String(summary.gpa)} sub="4.0 制" />
@@ -62,11 +63,11 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
             </>
           )}
         </div>
-      </div>
-      <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
-        <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2">
+      </SectionCard>
+      <TableShell>
+        <div className="flex items-center gap-2.5 border-b bg-muted/40 px-4 py-2.5">
           <Badge variant="outline" className="font-normal">{summary.term}</Badge>
-          <span className="text-xs text-muted-foreground">{summary.rows.length} 门课</span>
+          <span className="num text-xs text-muted-foreground">{summary.rows.length} 门课</span>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -97,7 +98,7 @@ function TranscriptDetail({ summary, rank, total, store, onDetail }: { summary: 
             ))}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </div>
   );
 }
@@ -237,7 +238,7 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
                     key={s.id}
                     type="button"
                     onClick={() => setSelectedKey(`${s.id}|${summary.term}`)}
-                    className="rounded-xl border bg-card px-4 py-3 text-left shadow-xs outline-none transition-colors hover:border-primary/50 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="row-interactive rounded-xl border bg-card px-4 py-3 text-left shadow-xs outline-none hover:border-primary/50"
                   >
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold">

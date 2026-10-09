@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { TableShell } from "@/components/list-table";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import { termNow, useTermScope } from "@/hooks/use-term-scope";
@@ -121,11 +122,11 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
+          <TableShell>
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-muted/40 text-[11px] text-muted-foreground">
-                  <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">姓名 / 学号</th>
+                  <th className="col-sticky-left px-3 py-2 text-left font-medium">姓名 / 学号</th>
                   <th className="px-2 py-2 text-left font-medium">班级</th>
                   {model.columns.map((c) => (
                     <th key={c.id} className="min-w-16 px-2 py-2 text-center font-medium">
@@ -144,7 +145,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
                   const rk = r.rankRow;
                   return (
                     <tr key={r.student.id} className="border-t">
-                      <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+                      <td className="col-sticky-left px-3 py-1.5 whitespace-nowrap">
                         <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{rk ? `#${rk.rank}/${rk.total}` : "未定"}</span>
                         <span className="font-medium">{r.student.name}</span>
                         <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
@@ -171,7 +172,7 @@ export default function MatrixView({ store, goto }: { store: Store; goto: GotoFn
                 })}
               </tbody>
             </table>
-          </div>
+          </TableShell>
           <p className="px-1 text-[11px] text-muted-foreground">
             {evalFormulaNote(store.evaluation)}，排名按学期综合分 · 当前{sortCaption(sortMode, groupByClass)}。
           </p>

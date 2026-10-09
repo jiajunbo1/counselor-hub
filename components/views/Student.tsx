@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
 import { AttachmentsSection } from "@/components/Attachments";
 import { ChangePasswordDialog } from "@/components/account-dialogs";
 import { PhotoAvatar } from "@/lib/photos";
@@ -275,8 +276,7 @@ export function StudentProfileView({
         <EmptyHint text="账号尚未绑定学籍信息，请联系辅导员确认学号已登记后重新注册。" />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
-            <p className="mb-1 text-sm font-semibold">证件照</p>
+          <SectionCard title="证件照" className="sm:col-span-2">
             <div className="flex items-center gap-4">
               <PhotoAvatar
                 studentId={self.id}
@@ -290,31 +290,36 @@ export function StudentProfileView({
                 <p className="text-muted-foreground">点击头像上传或更换本人近期免冠证件照（jpg / png / webp，≤2MB）。</p>
               </div>
             </div>
-          </div>
-          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
-            <p className="mb-1 text-sm font-semibold">学籍信息</p>
+          </SectionCard>
+          <SectionCard title="学籍信息">
             <InfoRow label="学号" value={self.student_no} />
             <InfoRow label="姓名" value={self.name} />
             <InfoRow label="性别" value={self.gender} />
             <InfoRow label="班级" value={self.class_name} />
             <InfoRow label="专业" value={self.major} />
             <InfoRow label="年级" value={self.grade} />
-          </div>
-          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
-            <p className="mb-1 text-sm font-semibold">联系方式与其他</p>
+          </SectionCard>
+          <SectionCard title="联系方式与其他">
             <InfoRow label="联系电话" value={self.phone} />
             <InfoRow label="政治面貌" value={self.political_status} />
             <InfoRow label="籍贯" value={self.native_place} />
             <InfoRow label="宿舍" value={room ? `${room.building} ${room.room_no}${self.bed_no ? ` · ${self.bed_no}号床` : ""}` : "未分配"} />
-          </div>
-          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
-            <p className="mb-1 text-sm font-semibold">班级干部职务</p>
+          </SectionCard>
+          <SectionCard
+            title="班级干部职务"
+            subtitle={store.positions.some((p) => p.status === "active" && p.attend_report)
+              ? "已开通本班考勤上报，可在「考勤上报」页登记本班同学；撤销职务后入口自动关闭，已上报记录保留。"
+              : undefined}
+            count={store.positions.filter((p) => p.status === "active").length}
+            className="sm:col-span-2"
+            padded={false}
+          >
             {store.positions.length === 0 ? (
-              <p className="py-1 text-sm text-muted-foreground">暂无委任的职务。</p>
+              <p className="px-4 py-3 text-sm text-muted-foreground">暂无委任的职务。</p>
             ) : (
-              <div className="space-y-0">
+              <div>
                 {store.positions.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-3 border-b border-dashed py-2 text-sm last:border-0">
+                  <div key={p.id} className="flex items-center justify-between gap-3 border-t px-4 py-2.5 text-sm first:border-t-0">
                     <span className="flex min-w-0 items-center gap-2">
                       <Badge variant="outline" className={
                         "shrink-0 font-normal " +
@@ -322,29 +327,26 @@ export function StudentProfileView({
                       }>{p.title}</Badge>
                       {p.note ? <span className="truncate text-xs text-muted-foreground">{p.note}</span> : null}
                     </span>
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    <span className="num shrink-0 text-xs text-muted-foreground">
                       {p.status === "active" ? `委任于 ${p.appointed_on}` : `撤销于 ${p.revoked_at ? p.revoked_at.slice(0, 10) : "-"}`}
                     </span>
                   </div>
                 ))}
-                {store.positions.some((p) => p.status === "active" && p.attend_report) ? (
-                  <p className="pt-2 text-xs text-muted-foreground">
-                    已开通本班考勤上报，可在「考勤上报」页登记本班同学；撤销职务后入口自动关闭，已上报记录保留。
-                  </p>
-                ) : null}
               </div>
             )}
-          </div>
-          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
-            <p className="mb-1 text-sm font-semibold">账号与安全</p>
-            <InfoRow label="登录账号" value={member.username} />
-            <div className="flex items-center justify-between gap-3 border-b border-dashed py-2 text-sm last:border-0">
-              <span className="shrink-0 text-muted-foreground">登录密码</span>
+          </SectionCard>
+          <SectionCard
+            title="账号与安全"
+            className="sm:col-span-2"
+            action={
               <Button variant="outline" size="sm" onClick={() => setChangingPw(true)}>
                 <KeyRound className="size-4" /> 修改密码
               </Button>
-            </div>
-          </div>
+            }
+          >
+            <InfoRow label="登录账号" value={member.username} />
+            <InfoRow label="登录密码" value="••••••" />
+          </SectionCard>
         </div>
       )}
 

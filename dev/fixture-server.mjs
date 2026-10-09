@@ -422,6 +422,10 @@ if (boot.ok) {
     if (!c.ok) console.warn("fixture counselor account failed:", JSON.stringify(c));
   }
 }
+// 学生演示号：走真实自助注册链路，绑定种子档案 2024010101 张伟。
+// 初始密码 123456、首次登录强制改密 —— 正好让学生端回归顺带覆盖改密屏。
+const stu = await callHandler({ action: "auth.student_register", student_no: "2024010101", name: "张伟" });
+if (!stu.ok) console.warn("fixture student account failed:", JSON.stringify(stu));
 db.audit_logs.length = 0; // 清掉初始化产生的审计，保持样例干净
 
 const server = createServer(async (incoming, outgoing) => {

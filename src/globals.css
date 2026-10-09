@@ -58,7 +58,22 @@
   --chart-4: #8b5cf6;
   --chart-5: #ef4444;
 
+  /* 三档圆角：控件 / 卡片 / 胶囊。皮肤只改 --radius 基数，档位关系固定。 */
   --radius: 0.75rem;
+  --r-chip: calc(var(--radius) - 0.25rem);
+  --r-control: var(--radius);
+  --r-card: calc(var(--radius) + 0.25rem);
+
+  /* 间距节奏：页 16 / 区块 12 / 行内 6，视图不再各自随手写 */
+  --gap-page: 1rem;
+  --gap-block: 0.75rem;
+  --gap-inline: 0.375rem;
+  --pad-card: 1rem;
+
+  /* 滚动条：一处定义，跟着 accent / muted 走，明暗与四皮肤自动继承 */
+  --scroll-thumb: color-mix(in oklab, var(--muted-foreground) 38%, transparent);
+  --scroll-thumb-active: color-mix(in oklab, var(--accent) 65%, transparent);
+  --scroll-track: transparent;
 
   --sidebar: #f7f8fc;
   --sidebar-foreground: #141a2e;
@@ -261,13 +276,34 @@ html.dark[data-skin="liquid"] {
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --radius-sm: calc(var(--radius) - 6px);
-  --radius-md: calc(var(--radius) - 3px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 6px);
+  --radius-md: var(--r-control);
+  --radius-lg: var(--r-control);
+  --radius-xl: var(--r-card);
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
+}
+
+/* 字号阶梯：12 / 14 / 15 / 20 / 22 / 26 / 32。
+   原先全站只有 12/14/18 三档，页面层级全靠字重撑，观感是「每页长得一样」。
+   这里把阶梯拉开（页标题 18→20、关键数字 24→26），正文基线保持 14 不动，
+   中文小字不缩，避免可读性倒退。 */
+@theme {
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.15rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.35rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.7rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.85rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 1.95rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.3rem;
 }
 
 html {
@@ -489,6 +525,65 @@ html[data-skin="liquid"] [data-slot="card"]::before {
   border-color: var(--border);
 }
 
+/* —— 统一节奏 / 交互反馈（A 档） —— */
+
+/* 页面标题全站只有 21 处 h1，用一条规则补字距与换行，不必逐个文件改 */
+h1 {
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.stack-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-page);
+}
+.stack-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-block);
+}
+.stack-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-inline);
+}
+
+/* 数字一律等宽对齐，避免 1 与 8 宽度不同导致的列抖动 */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 可点击行/卡片：原先全站只有 13 处 transition-colors，多数行按了没反馈 */
+.row-interactive {
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.row-interactive:hover {
+  background-color: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+.row-interactive:active {
+  transform: translateY(1px);
+}
+.row-interactive:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 60%, transparent);
+}
+
+/* 状态变更后的一次性闪光：解决「审批通过/驳回后不知道生效没有」 */
+@keyframes flash-in {
+  0% {
+    background-color: color-mix(in oklab, var(--success) 26%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash-changed {
+  animation: flash-in 0.9s ease-out 1;
+}
+
 /* 页面切换淡入 */
 @keyframes view-in {
   from {
@@ -504,6 +599,128 @@ html[data-skin="liquid"] [data-slot="card"]::before {
   animation: view-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* 列表区：内部滚动 + 表头常驻（原先 sticky 在 views 里 0 处，长表一滚就丢列含义）。
+   sticky 必须相对真正的滚动容器生效，所以这里显式给出滚动高度而不是靠页面滚。 */
+.list-scroll {
+  overflow: auto;
+  max-height: var(--list-max-h, 68dvh);
+}
+
+/* 滚动面统一语言：一处定义槽位、颜色和条体形状。
+   放 components 层，好让 scrollbar-none 这类工具类还能覆盖它（消息流自动滚时要藏条）。
+   注意引擎分流：Chromium 一旦看到 scrollbar-color / scrollbar-width 变成非 auto，
+   就会整组忽略 ::-webkit-scrollbar 自定义 —— 所以标准属性只发给 Firefox。 */
+@layer components {
+  html,
+  .list-scroll,
+  .scroll-surface {
+    scrollbar-gutter: stable;
+  }
+
+  @supports (-moz-appearance: none) {
+    html,
+    .list-scroll,
+    .scroll-surface {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+    }
+    .list-scroll:hover,
+    .scroll-surface:hover {
+      scrollbar-color: var(--scroll-thumb-active) var(--scroll-track);
+    }
+  }
+
+  /* WebKit/Blink：10px 槽里浮一条 6px 圆头胶囊，track 透明让皮肤底透出来 */
+  @supports not (-moz-appearance: none) {
+    html::-webkit-scrollbar,
+    .list-scroll::-webkit-scrollbar,
+    .scroll-surface::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    html::-webkit-scrollbar-track,
+    .list-scroll::-webkit-scrollbar-track,
+    .scroll-surface::-webkit-scrollbar-track {
+      background: var(--scroll-track);
+    }
+    html::-webkit-scrollbar-corner,
+    .list-scroll::-webkit-scrollbar-corner,
+    .scroll-surface::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    html::-webkit-scrollbar-thumb,
+    .list-scroll::-webkit-scrollbar-thumb,
+    .scroll-surface::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 9999px;
+      background-color: var(--scroll-thumb);
+      background-clip: padding-box;
+    }
+    .list-scroll::-webkit-scrollbar-thumb:hover,
+    .scroll-surface::-webkit-scrollbar-thumb:hover,
+    html::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scroll-thumb-active);
+      background-clip: padding-box;
+    }
+  }
+
+  /* 渐隐收摊距离按表格的实际溢出量给：vendor 默认 96px 远大于列表常见的 50~80px 横向溢出，
+     实测提示带全程为 0（等于没挂）。压到 12px 后实测起滚 20px、滚到底 0px。 */
+  .list-scroll {
+    --scroll-fade-reveal: 0.75rem;
+    --scroll-fade-e-size: 1.25rem;
+  }
+}
+
+html[data-skin="glass"],
+html[data-skin="liquid"] {
+  --scroll-thumb: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --scroll-thumb-active: color-mix(in oklab, var(--accent) 62%, transparent);
+}
+html.dark[data-skin="glass"],
+html.dark[data-skin="liquid"] {
+  --scroll-thumb: color-mix(in oklab, #ffffff 26%, transparent);
+  --scroll-thumb-active: color-mix(in oklab, var(--accent) 75%, transparent);
+}
+.list-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  background-color: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 100%), transparent);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.5);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+/* 表体节奏统一 + 数字一律等宽（不靠每个单元格自带 tabular-nums） */
+.list-scroll tbody td {
+  padding: 0.5rem 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.list-scroll tbody tr {
+  border-top: 1px solid var(--border);
+}
+/* 首格同时受「顶部常驻」和「左侧常驻」约束，压过左侧列 */
+.list-scroll thead th:first-child {
+  z-index: 14;
+}
+/* 左侧常驻列：半透明皮肤下不能用 bg-card 工具类（会被皮肤规则覆盖成透明）
+   也不能用 .bg-card：液态皮肤给它加了 position:relative，会吃掉 sticky */
+.list-scroll .col-sticky-left {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background-color: color-mix(in oklab, var(--card) calc(var(--surface-alpha) * 100%), transparent);
+}
+/* 左上角格：顶部常驻 + 左侧常驻同时生效，必须压过其它表头 */
+.list-scroll thead th.col-sticky-left {
+  z-index: 14;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -514,6 +731,12 @@ html[data-skin="liquid"] [data-slot="card"]::before {
   [data-slot="card"] {
     animation: none !important;
     transition: none !important;
+  }
+  .row-interactive:active {
+    transform: none;
+  }
+  .flash-changed {
+    animation: none !important;
   }
   html[data-skin="liquid"] [data-slot="card"]::after,
   html[data-skin="liquid"] [data-slot="card"]::before,

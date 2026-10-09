@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import ImportDialog from "@/components/ImportDialog";
 import { Input } from "@/components/ui/input";
 import { EmptyHint } from "@/components/form";
+import { TableShell } from "@/components/list-table";
 import type { Store } from "@/hooks/use-store";
 import { ALL_CLASS, inClassScope, useClassScope } from "@/hooks/use-class-scope";
 import { termNow, useTermScope } from "@/hooks/use-term-scope";
@@ -208,11 +209,11 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
       {rows.length === 0 ? (
         <EmptyHint text={store.students.length === 0 ? "还没有学生档案。" : "没有符合条件的学生。"} />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
+        <TableShell>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-muted/40 text-left text-[11px] text-muted-foreground">
-                <th className="sticky left-0 z-10 bg-card px-3 py-2 font-medium">姓名 / 学号</th>
+                <th className="col-sticky-left px-3 py-2 font-medium">姓名 / 学号</th>
                 <th className="px-2 py-2 text-left font-medium">班级</th>
                 <th className="px-2 py-2 text-center font-medium">考勤（旷/迟/早/假）</th>
                 <th className="px-2 py-2 text-center font-medium">扣分</th>
@@ -225,7 +226,7 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
             <tbody>
               {rows.map((r) => (
                 <tr key={r.student.id} className="border-t">
-                  <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+                  <td className="col-sticky-left px-3 py-1.5 whitespace-nowrap">
                     <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{r.rankRow ? `#${r.rankRow.rank}/${r.rankRow.total}` : "未定"}</span>
                     <span className="font-medium">{r.student.name}</span>
                     <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
@@ -282,7 +283,7 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       )}
 
       {importing ? (

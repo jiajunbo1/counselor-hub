@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, FileUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FileUp, GraduationCap, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ImportDialog from "@/components/ImportDialog";
+import { CountUp } from "@/components/motion";
 import {
   Dialog,
   DialogContent,
@@ -235,7 +236,7 @@ function GradesListView({ store, goto, focusNo }: { store: Store; goto: GotoFn; 
         </Button>
       </div>
 
-      <div className="space-y-3 rounded-xl border bg-card p-3 shadow-xs">
+      <div className="stack-block rounded-xl border bg-card p-4 shadow-xs">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Input
             value={keyword}
@@ -269,14 +270,25 @@ function GradesListView({ store, goto, focusNo }: { store: Store; goto: GotoFn; 
           {hasFilter ? (
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={resetFilters}>清空筛选</Button>
           ) : null}
-          <span className="ml-auto text-xs text-muted-foreground">
-            {filtered.length} 条{stats ? ` · 平均 ${stats.avg} · 及格率 ${stats.passRate}%` : ""}
+          <span className="num ml-auto text-xs text-muted-foreground">
+            <CountUp value={filtered.length} /> 条
+            {stats ? <> · 平均 <CountUp value={stats.avg} decimals={1} /> · 及格率 <CountUp value={stats.passRate} />%</> : ""}
           </span>
         </div>
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyHint text={grades.length === 0 ? "还没有成绩记录。" : "没有符合筛选条件的成绩。"} />
+        <EmptyHint
+          text={grades.length === 0 ? "还没有成绩记录。" : "没有符合筛选条件的成绩。"}
+          icon={<GraduationCap className="size-5 text-white" />}
+          action={
+            grades.length === 0 ? (
+              <Button size="sm" onClick={() => setFormGrade("new")}>
+                <Plus className="size-4" /> 录入成绩
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-2">
           {filtered.map((g) => (

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { format, isBefore, isValid, parseISO } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Inbox } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -176,20 +176,17 @@ export function DateInput({
   );
 }
 
-export function EmptyHint({ text }: { text: string }) {
+export function EmptyHint({ text, icon, action }: { text: string; icon?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 text-center">
       <div
-        className="flex size-12 items-center justify-center rounded-2xl text-primary"
+        className="flex size-11 items-center justify-center rounded-lg text-primary"
         style={{ backgroundImage: "var(--grad-primary)", boxShadow: "var(--shadow-glow)" }}
       >
-        <svg viewBox="0 0 24 24" fill="none" className="size-6 text-white" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M4 7a2 2 0 0 1 2-2h5l2 2h4a2 2 0 0 1 2 2v1" />
-          <path d="M4 9v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
-          <path d="M9 14h6" />
-        </svg>
+        {icon ?? <Inbox className="size-5 text-white" aria-hidden />}
       </div>
       <p className="max-w-xs text-sm text-muted-foreground">{text}</p>
+      {action}
     </div>
   );
 }

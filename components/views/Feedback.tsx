@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyHint, FormField, Select } from "@/components/form";
+import { SectionCard } from "@/components/section-card";
 import { StatusStamp, stampSafeWidth } from "@/components/StatusStamp";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
@@ -250,7 +251,14 @@ export default function FeedbackView({
         <p className="text-sm text-muted-foreground">向管理员反馈问题或建议。</p>
       </div>
 
-      <div className="rounded-xl border bg-card p-3 shadow-xs">
+      <SectionCard
+        title="提交反馈"
+        action={
+          <Button size="sm" disabled={busy} onClick={() => void submit()}>
+            <Send className="size-3.5" /> {busy ? "提交中…" : "提交反馈"}
+          </Button>
+        }
+      >
         <FormField label="反馈类型" required>
           <div className="flex flex-wrap gap-1.5">
             {FEEDBACK_CATEGORIES.map((c) => (
@@ -275,12 +283,7 @@ export default function FeedbackView({
             placeholder="请描述遇到的问题或期望的功能…"
           />
         </FormField>
-        <div className="mt-2 flex justify-end">
-          <Button size="sm" disabled={busy} onClick={() => void submit()}>
-            <Send className="size-3.5" /> {busy ? "提交中…" : "提交反馈"}
-          </Button>
-        </div>
-      </div>
+      </SectionCard>
 
       {store.feedback.length === 0 ? (
         <EmptyHint text="还没有提交过反馈。" />

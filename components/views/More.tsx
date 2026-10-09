@@ -1,7 +1,7 @@
 import { Download, FileSpreadsheet, History, KeyRound, LogOut, Phone, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/section-card";
 import { Switch } from "@/components/ui/switch";
 import ImportDialog from "@/components/ImportDialog";
 import { useEffect, useMemo, useState } from "react";
@@ -152,14 +152,11 @@ export default function MoreView({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Card className="gap-0 py-4">
-          <CardHeader className="px-4 pb-2">
-            <CardTitle className="text-sm">我的账号</CardTitle>
-            <CardDescription className="text-xs">
-              {member.display_name}（{ROLE_LABEL[member.role]} · {member.username}）{member.phone ? ` · ${member.phone}` : " · 未绑定手机"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 px-4">
+        <SectionCard
+          title="我的账号"
+          subtitle={`${member.display_name}（${ROLE_LABEL[member.role]} · ${member.username}）${member.phone ? ` · ${member.phone}` : " · 未绑定手机"}`}
+        >
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setChangingPw(true)}>
               <KeyRound className="size-4" /> 修改密码
             </Button>
@@ -169,43 +166,34 @@ export default function MoreView({
             <Button size="sm" variant="ghost" onClick={onLogout}>
               <LogOut className="size-4" /> 退出登录
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
         {member.role === "admin" ? (
-          <Card className="gap-0 py-4">
-            <CardHeader className="px-4 pb-2">
-              <CardTitle className="text-sm">管理后台</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2 px-4">
+          <SectionCard title="管理后台">
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => onOpenAdmin("accounts")}>
                 <ShieldCheck className="size-4" /> 账号管理
               </Button>
               <Button size="sm" variant="outline" onClick={() => onOpenAdmin("logs")}>
                 <History className="size-4" /> 操作日志
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionCard>
         ) : null}
-        <Card className="gap-0 py-4">
-          <CardHeader className="px-4 pb-2">
-            <CardTitle className="text-sm">待办提醒</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 px-4">
-            <Button size="sm" variant="outline" onClick={() => onNavigate("overview")}>
-              待审批 {store.records.filter((r) => r.type === "leave" && r.status === "pending").length} · 不及格 {failCount}
-            </Button>
-          </CardContent>
-        </Card>
-        <Card className="gap-0 py-4">
-          <CardHeader className="px-4 pb-2">
-            <CardTitle className="flex items-center gap-1.5 text-sm">
-              <UserPlus className="size-4" /> 学生自助注册
-            </CardTitle>
-            <CardDescription className="text-xs">
-              开放时学生可在登录页用「学号+姓名」注册，初始密码由系统统一分配（首登强制修改）；集中注册完成后建议关闭
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center gap-3 px-4">
+        <SectionCard title="待办提醒">
+          <Button size="sm" variant="outline" onClick={() => onNavigate("overview")}>
+            待审批 <span className="num">{store.records.filter((r) => r.type === "leave" && r.status === "pending").length}</span> · 不及格 <span className="num">{failCount}</span>
+          </Button>
+        </SectionCard>
+        <SectionCard
+          title={
+            <span className="flex items-center gap-1.5">
+              <UserPlus className="size-4 shrink-0" /> 学生自助注册
+            </span>
+          }
+          subtitle="开放时学生可在登录页用「学号+姓名」注册，初始密码由系统统一分配（首登强制修改）；集中注册完成后建议关闭"
+        >
+          <div className="flex items-center gap-3">
             <Switch
               checked={regOpen === true}
               disabled={regSaving || regOpen === null}
@@ -214,30 +202,23 @@ export default function MoreView({
             <span className="text-sm text-muted-foreground">
               {regOpen === null ? "读取设置…" : regOpen ? "已开放" : "已关闭"}
             </span>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">批量导入</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2 px-4 pb-4">
+      <SectionCard title="批量导入">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setTemplateKind("student")}>
             <FileSpreadsheet className="size-4" /> 导入学生
           </Button>
           <Button variant="outline" onClick={() => setTemplateKind("grade")}>
             <FileSpreadsheet className="size-4" /> 导入成绩
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">数据备份（导出 CSV）</CardTitle>
-          <CardDescription>建议每周至少完整导出一次，文件通过浏览器下载到本机保存。</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2 px-4 pb-4">
+      <SectionCard title="数据备份（导出 CSV）" subtitle="建议每周至少完整导出一次，文件通过浏览器下载到本机保存。">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={exportAll}>
             <Download className="size-4" /> 一键导出全部
           </Button>
@@ -252,18 +233,15 @@ export default function MoreView({
           {member.role === "admin" ? (
             <Button variant="outline" onClick={() => doExport("logs")}>日志</Button>
           ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">使用说明</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 px-4 pb-4 text-sm text-muted-foreground">
+      <SectionCard title="使用说明">
+        <div className="space-y-2 text-sm text-muted-foreground">
           <p>1. 本系统在电脑与手机上使用同一网址，数据实时同步；手机浏览器可「添加到主屏幕」当作 App 使用。</p>
           <p>2. 所有删除操作不可恢复，重要学期节点请先「一键导出全部」备份。</p>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
       {templateKind ? (
         <ImportDialog

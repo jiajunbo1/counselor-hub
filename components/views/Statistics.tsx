@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/section-card";
 import { EmptyHint } from "@/components/form";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import type { Store } from "@/hooks/use-store";
@@ -116,117 +116,97 @@ export default function StatisticsView({ store }: { store: Store }) {
         <p className="text-sm text-muted-foreground">记录趋势、成绩分布与班级概览。</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">近 6 个月记录趋势</CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {trendTotal === 0 ? (
-            <EmptyHint text="近 6 个月还没有记录。" />
+      <SectionCard title="近 6 个月记录趋势" subtitle="请假 / 谈话 / 表彰 / 处分按月堆叠">
+        {trendTotal === 0 ? (
+          <EmptyHint text="近 6 个月还没有记录。" />
+        ) : (
+          <ChartContainer config={trendConfig} className="mx-auto aspect-[16/9] max-h-64 w-full">
+            <BarChart data={trendData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <ChartLegend content={<ChartLegendContent />} />
+              <Bar dataKey="leave" stackId="a" fill="var(--color-leave)" radius={0} />
+              <Bar dataKey="talk" stackId="a" fill="var(--color-talk)" radius={0} />
+              <Bar dataKey="award" stackId="a" fill="var(--color-award)" radius={0} />
+              <Bar dataKey="punish" stackId="a" fill="var(--color-punish)" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
+        )}
+      </SectionCard>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="成绩分数段分布" subtitle={`共 ${grades.length} 条 · 均分 ${scoreAvg || "-"}`}>
+          {grades.length === 0 ? (
+            <EmptyHint text="还没有成绩数据。" />
           ) : (
-            <ChartContainer config={trendConfig} className="mx-auto aspect-[16/9] max-h-64 w-full">
-              <BarChart data={trendData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <ChartContainer config={bandConfig} className="mx-auto aspect-[16/9] max-h-64 w-full">
+              <BarChart data={bandData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
+                <XAxis dataKey="key" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Bar dataKey="leave" stackId="a" fill="var(--color-leave)" radius={0} />
-                <Bar dataKey="talk" stackId="a" fill="var(--color-talk)" radius={0} />
-                <Bar dataKey="award" stackId="a" fill="var(--color-award)" radius={0} />
-                <Bar dataKey="punish" stackId="a" fill="var(--color-punish)" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="count" fill="var(--color-count)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ChartContainer>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">成绩分数段分布（共 {grades.length} 条 · 均分 {scoreAvg || "-"}）</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {grades.length === 0 ? (
-              <EmptyHint text="还没有成绩数据。" />
-            ) : (
-              <ChartContainer config={bandConfig} className="mx-auto aspect-[16/9] max-h-64 w-full">
-                <BarChart data={bandData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="key" tickLine={false} axisLine={false} fontSize={11} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="var(--color-count)" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">学生性别构成</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {students.length === 0 ? (
-              <EmptyHint text="还没有学生数据。" />
-            ) : (
-              <ChartContainer
-                config={{
-                  男: { label: "男", color: GENDER_COLORS["男"] },
-                  女: { label: "女", color: GENDER_COLORS["女"] },
-                  未填写: { label: "未填写", color: GENDER_COLORS["未填写"] },
-                }}
-                className="mx-auto aspect-[16/9] max-h-64 w-full"
-              >
-                <PieChart>
-                  <Pie data={genderData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={2} strokeWidth={0}>
-                    {genderData.map((d) => (
-                      <Cell key={d.name} fill={GENDER_COLORS[d.name] ?? "var(--chart-4)"} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="name" />} />
-                  <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-                </PieChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">班级概览</CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {classRows.length === 0 ? (
+        <SectionCard title="学生性别构成" subtitle={`共 ${students.length} 人`}>
+          {students.length === 0 ? (
             <EmptyHint text="还没有学生数据。" />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-4 font-normal">班级</th>
-                    <th className="py-2 pr-4 font-normal">人数</th>
-                    <th className="py-2 pr-4 font-normal">平均分</th>
-                    <th className="py-2 font-normal">不及格人次</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classRows.map((c) => (
-                    <tr key={c.name} className="border-b last:border-0">
-                      <td className="py-2 pr-4">{c.name}</td>
-                      <td className="py-2 pr-4 tabular-nums">{c.students}</td>
-                      <td className="py-2 pr-4 tabular-nums">{c.avg ?? "-"}</td>
-                      <td className={"py-2 tabular-nums " + (c.fails > 0 ? "text-rose-600" : "")}>{c.fails}</td>
-                    </tr>
+            <ChartContainer
+              config={{
+                男: { label: "男", color: GENDER_COLORS["男"] },
+                女: { label: "女", color: GENDER_COLORS["女"] },
+                未填写: { label: "未填写", color: GENDER_COLORS["未填写"] },
+              }}
+              className="mx-auto aspect-[16/9] max-h-64 w-full"
+            >
+              <PieChart>
+                <Pie data={genderData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={2} strokeWidth={0}>
+                  {genderData.map((d) => (
+                    <Cell key={d.name} fill={GENDER_COLORS[d.name] ?? "var(--chart-4)"} />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </Pie>
+                <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="name" />} />
+                <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+              </PieChart>
+            </ChartContainer>
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="班级概览" count={classRows.length} padded={false}>
+        {classRows.length === 0 ? (
+          <div className="p-4">
+            <EmptyHint text="还没有学生数据。" />
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2 font-normal">班级</th>
+                <th className="px-4 py-2 text-right font-normal">人数</th>
+                <th className="px-4 py-2 text-right font-normal">平均分</th>
+                <th className="px-4 py-2 text-right font-normal">不及格人次</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classRows.map((c) => (
+                <tr key={c.name} className="border-b last:border-0">
+                  <td className="px-4 py-2">{c.name}</td>
+                  <td className="num px-4 py-2 text-right">{c.students}</td>
+                  <td className="num px-4 py-2 text-right">{c.avg ?? "-"}</td>
+                  <td className={"num px-4 py-2 text-right " + (c.fails > 0 ? "text-rose-600" : "")}>{c.fails}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </SectionCard>
     </section>
   );
 }

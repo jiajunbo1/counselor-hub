@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionCard } from "@/components/section-card";
 import { EmptyHint, Select } from "@/components/form";
 import type { Store } from "@/hooks/use-store";
 import { ACTION_LABEL, type AuditLog } from "@/lib/types";
@@ -78,18 +78,15 @@ export default function LogsView({ store }: { store: Store }) {
       </div>
 
       {byActor.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">操作分布（当前筛选 {filtered.length} 条）</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 px-4 pb-4">
+        <SectionCard title="操作分布" count={`${filtered.length} 条`}>
+          <div className="flex flex-wrap gap-2">
             {byActor.map(([name, count]) => (
               <Badge key={name} variant="secondary" className="font-normal">
-                {name} · {count}
+                {name} · <span className="num">{count}</span>
               </Badge>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       ) : null}
 
       {filtered.length === 0 ? (
@@ -98,7 +95,7 @@ export default function LogsView({ store }: { store: Store }) {
         <ul className="divide-y rounded-xl border bg-card shadow-xs">
           {filtered.map((l: AuditLog) => (
             <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
-              <span className="w-32 shrink-0 text-xs tabular-nums text-muted-foreground">{timeLabel(l.created_at)}</span>
+              <span className="num w-32 shrink-0 text-xs text-muted-foreground">{timeLabel(l.created_at)}</span>
               <span className="w-20 shrink-0 truncate">{l.actor_name || "未知"}</span>
               <Badge variant="outline" className="shrink-0 font-normal">
                 {ACTION_LABEL[l.action] ?? l.action}

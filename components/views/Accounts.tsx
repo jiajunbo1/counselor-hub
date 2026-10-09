@@ -22,7 +22,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyHint, FormField, Select } from "@/components/form";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { ROLE_LABEL, type Account, type MemberRole } from "@/lib/types";
@@ -220,15 +219,14 @@ export default function AccountsView({ currentMember }: { currentMember: MemberU
         <ul className="space-y-2">
           {accounts.map((a) => (
             <li key={a.id}>
-              <Card className="gap-0 py-3">
-                <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card px-4 py-2.5 shadow-xs">
                   <span className="w-24 shrink-0 font-semibold">{a.display_name}</span>
                   <span className="w-28 shrink-0 text-xs text-muted-foreground">{a.username}</span>
                   <Badge variant={a.role === "admin" ? "default" : "secondary"}>{ROLE_LABEL[a.role]}</Badge>
                   <Badge variant={a.status === "active" ? "outline" : "destructive"} className="font-normal">
                     {a.status === "active" ? "启用中" : "已停用"}
                   </Badge>
-                  {a.phone ? <span className="text-xs text-muted-foreground tabular-nums">{a.phone}</span> : null}
+                  {a.phone ? <span className="num text-xs text-muted-foreground">{a.phone}</span> : null}
                   {a.must_change ? <Badge variant="outline" className="border-transparent font-normal pill-warning">未改初始密码</Badge> : null}
                   <span className="min-w-0 flex-1" />
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => setResetting(a)}>
@@ -247,8 +245,7 @@ export default function AccountsView({ currentMember }: { currentMember: MemberU
                   >
                     {a.status === "active" ? "停用" : "启用"}
                   </Button>
-                </CardContent>
-              </Card>
+              </div>
             </li>
           ))}
         </ul>
