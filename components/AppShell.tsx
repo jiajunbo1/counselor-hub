@@ -52,6 +52,7 @@ import RecordsView, { LeavesView } from "@/components/views/Records";
 import MessagesView from "@/components/views/Messages";
 import FeedbackView from "@/components/views/Feedback";
 import StudentView, { StudentProfileView } from "@/components/views/Student";
+import StudentGradesView from "@/components/views/StudentGrades";
 import AdminView, { type AdminSection } from "@/components/views/Admin";
 import MoreView from "@/components/views/More";
 import LoginView from "@/components/views/Login";
@@ -77,6 +78,7 @@ const TABS = [
 
 const STUDENT_TABS = [
   { id: "s_leave", label: "请假", icon: CalendarDays },
+  { id: "s_grades", label: "成绩", icon: GraduationCap },
   { id: "s_attend", label: "考勤上报", icon: ClipboardCheck, requiresGrant: true },
   { id: "s_messages", label: "留言", icon: MessageSquareText },
   { id: "s_feedback", label: "反馈", icon: Lightbulb },
@@ -202,9 +204,10 @@ function Workspace({ auth }: { auth: Auth }) {
             member={member}
             onOpenMessages={() => setTab("s_messages")}
             onOpenProfile={() => setTab("s_profile")}
-            onOpenMore={() => setTab("s_profile")}
           />
         ) : null;
+      case "s_grades":
+        return isStudent ? <StudentGradesView store={store} member={member} /> : null;
       case "s_messages":
         return isStudent ? <MessagesView store={store} member={member} /> : null;
       case "s_attend":
@@ -217,7 +220,7 @@ function Workspace({ auth }: { auth: Auth }) {
       case "feedback":
         return <FeedbackView store={store} member={member} />;
       case "s_profile":
-        return isStudent ? <StudentProfileView store={store} member={member} /> : null;
+        return isStudent ? <StudentProfileView store={store} member={member} onUpdateMember={auth.updateMember} /> : null;
       case "overview":
         return <OverviewView store={store} onNavigate={setTab} />;
       case "students":

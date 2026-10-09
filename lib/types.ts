@@ -134,6 +134,8 @@ export interface Grade {
   student_no: string;
   class_name: string;
   course_name: string;
+  /** 仅学生端返回：本人成绩对应课程的学分，用于与辅导员端一致的加权汇总 */
+  course_credit?: string;
 }
 
 // ---- 综合测评（批次 M）：考勤台账 + 综测口径 ----

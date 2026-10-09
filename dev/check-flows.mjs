@@ -470,6 +470,20 @@ if (ST) {
   results.push(myRooms.ok && myRooms.data.length === 0 && myCourses.data.length === 0 ? "PASS student sees no rooms/courses" : `FAIL myRooms ${JSON.stringify(myRooms)} ${JSON.stringify(myCourses)}`);
   const myLogs = await get("audit_logs", ST);
   results.push(myLogs.code === "access_denied" && myLogs.status === 403 ? "PASS student denied audit_logs" : `FAIL myLogs ${JSON.stringify(myLogs)}`);
+  // 批次AA：学生端课程表保持为空，但本人成绩行要带课程名与学分，
+  // 否则前端只能按 1 学分兜底，学期均分会与辅导员台账算出两套数。
+  const aaCourse = await post({ action: "course.create", name: "学分联动测试课", course_code: "AA-CREDIT", credit: "3", semester: "2026-2027-1", class_name: "软件2402" }, T);
+  const aaGrade = aaCourse.ok
+    ? await post({ action: "grade.create", student_id: reg.member.student_id, course_id: aaCourse.item?.id, term: "2026-2027-1", score: "75", exam_date: "2027-01-05" }, T)
+    : null;
+  const aaRow = (await get("grades", ST)).data?.find((g) => g.id === aaGrade?.item?.id);
+  const aaCourses = await get("courses", ST);
+  results.push(
+    aaRow?.course_name === "学分联动测试课" && aaRow?.course_credit === "3" && aaCourses.ok && aaCourses.data.length === 0
+      ? "PASS student grade rows carry own course name + credit while course list stays hidden"
+      : `FAIL aaCredit ${JSON.stringify(aaRow).slice(0, 200)} ${JSON.stringify(aaCourses).slice(0, 80)}`
+  );
+  if (aaCourse.ok) await post({ action: "course.delete", id: aaCourse.item?.id }, T);
   const myRecords = await get("records", ST);
   results.push(myRecords.ok && myRecords.data.every((r) => r.student_id === reg.member.student_id) ? "PASS student reads only own records" : `FAIL myRecords ${JSON.stringify(myRecords).slice(0, 160)}`);
   // 学生不得触碰辅导员端写接口

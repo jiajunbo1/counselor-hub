@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarDays, CircleAlert, FileText, Pencil, Send, Trash2 } from "lucide-react";
+import { CalendarDays, CircleAlert, FileText, KeyRound, Pencil, ScrollText, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateInput, EmptyHint, FormField, Select } from "@/components/form";
 import { AttachmentsSection } from "@/components/Attachments";
+import { ChangePasswordDialog } from "@/components/account-dialogs";
 import { PhotoAvatar } from "@/lib/photos";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
@@ -103,6 +104,7 @@ function LeaveFormDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{created ? "上传证明材料" : "提交请假申请"}</DialogTitle>
+          {!created ? <DialogDescription>请假规则（辅导员设定）：{rulesSummary(rules)} · 待审批最多 5 条。</DialogDescription> : null}
         </DialogHeader>
         {created ? (
           <div className="grid gap-3">
@@ -244,15 +246,19 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function StudentProfileView({ store, member }: { store: Store; member: MemberUser }) {
+export function StudentProfileView({
+  store,
+  member,
+  onUpdateMember,
+}: {
+  store: Store;
+  member: MemberUser;
+  onUpdateMember: (member: MemberUser) => void;
+}) {
   const [editing, setEditing] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
   const self = store.students.find((s) => s.id === member.student_id) ?? null;
   const room = self?.dorm_room_id ? store.rooms.find((r) => r.id === self.dorm_room_id) : null;
-  const myGrades = store.grades.filter((g) => g.student_id === member.student_id);
-  const avg =
-    myGrades.length > 0
-      ? (myGrades.reduce((sum, g) => sum + Number(g.score || 0), 0) / myGrades.length).toFixed(1)
-      : null;
 
   return (
     <section className="space-y-4">
@@ -300,8 +306,6 @@ export function StudentProfileView({ store, member }: { store: Store; member: Me
             <InfoRow label="政治面貌" value={self.political_status} />
             <InfoRow label="籍贯" value={self.native_place} />
             <InfoRow label="宿舍" value={room ? `${room.building} ${room.room_no}${self.bed_no ? ` · ${self.bed_no}号床` : ""}` : "未分配"} />
-            <InfoRow label="登录账号" value={member.username} />
-            <InfoRow label="成绩" value={avg ? `${myGrades.length} 门 · 平均 ${avg}` : "暂无成绩"} />
           </div>
           <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
             <p className="mb-1 text-sm font-semibold">班级干部职务</p>
@@ -331,28 +335,50 @@ export function StudentProfileView({ store, member }: { store: Store; member: Me
               </div>
             )}
           </div>
+          <div className="rounded-xl border bg-card px-4 py-3 shadow-xs sm:col-span-2">
+            <p className="mb-1 text-sm font-semibold">账号与安全</p>
+            <InfoRow label="登录账号" value={member.username} />
+            <div className="flex items-center justify-between gap-3 border-b border-dashed py-2 text-sm last:border-0">
+              <span className="shrink-0 text-muted-foreground">登录密码</span>
+              <Button variant="outline" size="sm" onClick={() => setChangingPw(true)}>
+                <KeyRound className="size-4" /> 修改密码
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
       {editing && self ? <ProfileDialog store={store} student={self} onClose={() => setEditing(false)} /> : null}
+      {changingPw ? (
+        <ChangePasswordDialog
+          onDone={(m) => {
+            onUpdateMember(m);
+            setChangingPw(false);
+          }}
+          onClose={() => setChangingPw(false)}
+        />
+      ) : null}
     </section>
   );
 }
 
+// 学生端「请假」：只管请假这一件事。
+// 规则是「说明」不是「内容」，所以标题下方一行字呈现（辅导员端改规则即时同步），
+// 不再做成与待审批行同形的卡片/胶囊。
 export default function StudentView({
   store,
   member,
   onOpenMessages,
   onOpenProfile,
-  onOpenMore,
 }: {
   store: Store;
   member: MemberUser;
   onOpenMessages: () => void;
   onOpenProfile: () => void;
-  onOpenMore: () => void;
 }) {
   const [form, setForm] = useState(false);
+  const [seg, setSeg] = useState<"pending" | "history">("pending");
+  const [histStatus, setHistStatus] = useState("all");
   const [cancelling, setCancelling] = useState<RecordItem | null>(null);
   const [busy, setBusy] = useState(false);
   const self = store.students.find((s) => s.id === member.student_id) ?? null;
@@ -360,9 +386,13 @@ export default function StudentView({
     () => store.records.filter((r) => r.type === "leave" && r.student_id === member.student_id),
     [store.records, member.student_id]
   );
-  const myGrades = store.grades.filter((g) => g.student_id === member.student_id);
   const unreadReplies = store.messages.filter((m) => m.replied === 1 && m.sender_role === "student").length;
-  const pendingCount = myLeaves.filter((r) => r.status === "pending").length;
+  const pendingLeaves = myLeaves.filter((r) => r.status === "pending");
+  const historyAll = useMemo(
+    () => myLeaves.filter((r) => r.status !== "pending").sort((a, b) => (b.start_date || b.occurred_on).localeCompare(a.start_date || a.occurred_on)),
+    [myLeaves]
+  );
+  const historyLeaves = histStatus === "all" ? historyAll : historyAll.filter((r) => r.status === histStatus);
   const profileIncomplete = !self || !self.gender || !self.class_name || !self.phone;
 
   const cancel = async () => {
@@ -382,15 +412,19 @@ export default function StudentView({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-lg font-bold">我的请假</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {self ? `${self.name} · 学号 ${self.student_no}` : "未绑定学籍信息"}
-            {pendingCount > 0 ? ` · ${pendingCount} 条待审批` : ""}
+            {pendingLeaves.length > 0 ? ` · ${pendingLeaves.length} 条待审批` : ""}
+          </p>
+          <p className="mt-1.5 text-[15px] font-semibold leading-6 text-foreground">
+            <ScrollText className="mr-1 inline-block size-4 shrink-0 align-[-3px] text-muted-foreground" />
+            请假规则（辅导员设定）：{rulesSummary(store.rules)} · 待审批最多 5 条
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Button variant="outline" size="sm" onClick={onOpenMessages}>
             <Send className="size-4" /> 留言
             {unreadReplies > 0 ? <Badge variant="outline" className="ml-1 border-transparent bg-primary/10 text-primary">{unreadReplies}</Badge> : null}
@@ -405,25 +439,70 @@ export default function StudentView({
         <button
           type="button"
           onClick={onOpenProfile}
-          className="flex w-full items-center gap-2 rounded-xl border px-4 py-3 text-left text-sm pill-warning"
-          style={{ borderColor: "color-mix(in oklab, var(--warning) 45%, transparent)" }}
+          className="flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm text-[color:var(--warning-fg)] transition-colors hover:bg-muted/60"
+          style={{ borderLeftColor: "var(--warning)" }}
         >
           <CircleAlert className="size-4 shrink-0" />
-          请先补全个人信息。
+          请先补全个人信息，否则请假无法正常送达审批。
           <span className="ml-auto shrink-0 font-semibold">去填写 →</span>
         </button>
       ) : null}
 
-      <div className="rounded-xl border bg-card px-4 py-3 text-xs leading-5 text-muted-foreground">
-        <span className="font-medium text-foreground">请假规则（辅导员设定）：</span>
-        {rulesSummary(store.rules)}。单次最多 {store.rules.max_days} 天，待审批申请最多 5 条。
+      <div className="flex min-w-0 items-center gap-1 rounded-xl border bg-muted/40 p-1">
+        {([
+          { v: "pending", label: "待审批", n: pendingLeaves.length },
+          { v: "history", label: "历史记录", n: historyAll.length },
+        ] as const).map(({ v, label, n }) => {
+          const active = seg === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setSeg(v)}
+              aria-pressed={active}
+              className={
+                "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring/50 " +
+                (active ? "text-white" : "text-muted-foreground hover:text-foreground")
+              }
+              style={active ? { backgroundImage: "var(--grad-primary)", boxShadow: "var(--shadow-glow)" } : undefined}
+            >
+              {v === "pending" && n > 0 ? <span className={"size-1.5 shrink-0 rounded-full " + (active ? "bg-white" : "bg-rose-500")} /> : null}
+              <span>{label}</span>
+              <span className={"shrink-0 text-[11px] tabular-nums " + (active ? "text-white/85" : "text-muted-foreground/70")}>{n}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {myLeaves.length === 0 ? (
-        <EmptyHint text="还没有请假记录。" />
+      {seg === "history" && historyAll.length > 0 ? (
+        <div className="w-32">
+          <Select
+            value={histStatus}
+            onValueChange={setHistStatus}
+            ariaLabel="历史请假状态筛选"
+            options={[
+              { value: "all", label: "全部结果" },
+              { value: "approved", label: RECORD_STATUS_LABEL.approved },
+              { value: "rejected", label: RECORD_STATUS_LABEL.rejected },
+              { value: "done", label: RECORD_STATUS_LABEL.done },
+            ]}
+          />
+        </div>
+      ) : null}
+
+      {(seg === "pending" ? pendingLeaves : historyLeaves).length === 0 ? (
+        <EmptyHint
+          text={
+            seg === "pending"
+              ? "暂无待审批的请假申请。"
+              : historyAll.length === 0
+                ? "还没有已处理的请假记录。"
+                : "没有符合筛选的请假记录。"
+          }
+        />
       ) : (
         <ul className="space-y-2">
-          {myLeaves.map((r) => (
+          {(seg === "pending" ? pendingLeaves : historyLeaves).map((r) => (
             <li key={r.id} className="rounded-xl border bg-card px-4 py-3 shadow-xs">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <Badge variant="outline" className={"shrink-0 border-transparent font-normal " + (STATUS_BADGE[r.status] ?? "bg-muted text-muted-foreground")}>
@@ -460,29 +539,6 @@ export default function StudentView({
           ))}
         </ul>
       )}
-
-      {myGrades.length > 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-3 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">最近成绩</p>
-            <span className="text-xs text-muted-foreground">共 {myGrades.length} 门</span>
-          </div>
-          <ul className="mt-2 space-y-1 text-sm">
-            {myGrades.slice(0, 5).map((g) => (
-              <li key={g.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-muted-foreground">{g.course_name} · {g.term}</span>
-                <span className="shrink-0 font-medium tabular-nums">{g.score}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onClick={onOpenMore}>
-          <Pencil className="size-4" /> 个人设置 / 修改密码
-        </Button>
-      </div>
 
       {form ? <LeaveFormDialog store={store} member={member} onClose={() => setForm(false)} /> : null}
       <AlertDialog open={!!cancelling} onOpenChange={(open) => !open && !busy && setCancelling(null)}>

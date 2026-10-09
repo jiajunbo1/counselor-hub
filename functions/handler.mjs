@@ -2155,7 +2155,13 @@ async function handleRead({ supabase, params, member }) {
         .filter((g) => g.student_id === member.student_id);
       const courses = await listAll(supabase, "courses", COURSE_COLS, "name", 500);
       const courseById = new Map(courses.map((c) => [c.id, c]));
-      for (const g of items) g.course_name = courseById.get(g.course_id)?.name ?? "（课程已删除）";
+      // 学生端不开放课程表（courses 返回空），但成绩汇总要按学分加权，
+      // 所以把这条成绩 own 的课程学分一并带出，前端才能与辅导员台账算出同一套数。
+      for (const g of items) {
+        const c = courseById.get(g.course_id);
+        g.course_name = c?.name ?? "（课程已删除）";
+        g.course_credit = c?.credit ?? "";
+      }
       items.sort((a, b) => (a.exam_date < b.exam_date ? 1 : a.exam_date > b.exam_date ? -1 : 0));
       return json({ ok: true, data: items });
     }
