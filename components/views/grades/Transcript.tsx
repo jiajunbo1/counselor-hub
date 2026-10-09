@@ -13,7 +13,8 @@ import type { Student } from "@/lib/types";
 import type { Grade } from "@/lib/types";
 import { summarizeTerm, type TermSummary } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankRow, type RankSortMode } from "@/lib/rank-view";
-import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
+import { RankSortControl, sortCaption, SECTION_SORT_OPTIONS } from "./SortControl";
+import { ClassChips, SectionHeader, classNamesOf, sectionsByClass, useCollapsedSections } from "./class-section";
 import { ALL, fmt1, HOT_CLASS, ScoreCell } from "./parts";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
 
@@ -109,9 +110,9 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
   // 学期不再本页自管，跟随侧栏全局学期作用域（ALL=每学期分组展示）
   const term = termNow(useTermScope());
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
-  const [groupByClass, setGroupByClass] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
+  const { collapsed, toggle: toggleSection } = useCollapsedSections();
 
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
   const evalByStudentTerm = useMemo(
@@ -154,11 +155,28 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
           return true;
         })
         .map((summary) => ({ student: summary.student, summary, rankRow: rankOf.get(summary.student.id) ?? null }))
-        .sort(compareRankSortable(sortMode, groupByClass));
+        .sort(compareRankSortable(sortMode, true));
       if (items.length > 0) out.push({ term: activeTerm, items });
     }
     return out;
-  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, scope, sortMode, groupByClass]);
+  }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudentTerm, termsInRange, keyword, scope, sortMode]);
+
+  const classNames = useMemo(() => classNamesOf(store.students), [store.students]);
+
+  // 班级胶囊人数 = 该班在学期范围内有成绩单的学生数（不受班级选择与搜索框影响）
+  const chipCounts = useMemo(() => {
+    const termSet = new Set(termsInRange);
+    const has = new Set(store.grades.filter((g) => termSet.has(g.term)).map((g) => g.student_id));
+    const byClass = new Map<string, number>();
+    let all = 0;
+    for (const s of store.students) {
+      if (!has.has(s.id)) continue;
+      all += 1;
+      const cls = s.class_name || "未分班";
+      byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
+    }
+    return { byClass, all };
+  }, [store.grades, store.students, termsInRange]);
 
   const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
 
@@ -206,18 +224,13 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
             </button>
           ) : null}
         </div>
-        <RankSortControl
-          mode={sortMode}
-          onMode={setSortMode}
-          options={sortOptionsFor(scope.cls === ALL_CLASS, true)}
-          groupByClass={groupByClass}
-          onGroupByClass={setGroupByClass}
-          showGroupToggle={scope.cls === ALL_CLASS && sortMode === "composite"}
-        />
+        <RankSortControl mode={sortMode} onMode={setSortMode} options={SECTION_SORT_OPTIONS} />
         <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground" title={`${totalCount} 张成绩单`}>
-          {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term} · 当前{sortCaption(sortMode, groupByClass)}
+          {totalCount} 张成绩单 · {term === ALL ? (allTerms.length ? `全部 ${allTerms.length} 个学期` : "暂无学期") : term} · 当前{sortCaption(sortMode)}
         </span>
       </div>
+
+      <ClassChips classNames={classNames} counts={chipCounts.byClass} allCount={chipCounts.all} />
 
       {totalCount === 0 ? (
         <EmptyHint text={store.grades.length === 0 ? "还没有成绩记录。" : "没有符合条件的学生成绩。"} />
@@ -230,41 +243,61 @@ export default function TranscriptView({ store, goto }: { store: Store; goto: Go
                 <span className="text-xs text-muted-foreground">{g.items.length} 名学生</span>
               </div>
             ) : null}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {g.items.map(({ summary, rankRow }) => {
-                const s: Student = summary.student;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedKey(`${s.id}|${summary.term}`)}
-                    className="row-interactive rounded-xl border bg-card px-4 py-3 text-left shadow-xs outline-none hover:border-primary/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                        {s.name}
-                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">{s.student_no}</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Trophy className="size-3.5" />
-                        {rankRow ? `${rankRow.rank}/${rankRow.total}` : "未定"}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{s.class_name || "未分班"} · {summary.rows.length} 门课</p>
-                    <div className="mt-2 flex items-center gap-3 text-xs">
-                      <span className="text-muted-foreground">综合 <b className="tabular-nums text-foreground">{fmt1(summary.composite)}</b></span>
-                      <span className="text-muted-foreground">GPA <b className="tabular-nums text-foreground">{summary.gpa ?? "–"}</b></span>
-                      {summary.usual === null ? (
-                        <Badge variant="outline" className="border-transparent bg-amber-500/10 font-normal text-amber-600">平时未录</Badge>
-                      ) : null}
-                      {summary.fails > 0 ? (
-                        <Badge variant="outline" className="border-transparent bg-rose-500/10 font-normal text-rose-600">挂 {summary.fails} 门</Badge>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {sectionsByClass(g.items, (it) => it.student.class_name).map((sec) => {
+              // 节头折叠按「学期|班级」记，多学期同班互不影响
+              const key = `${g.term}|${sec.cls}`;
+              const isCollapsed = scope.cls === ALL_CLASS && collapsed.has(key);
+              return (
+              <div key={sec.cls} className="space-y-2">
+                {scope.cls === ALL_CLASS ? (
+                  <SectionHeader
+                    cls={sec.cls}
+                    count={sec.rows.length}
+                    fails={sec.rows.filter((it) => it.summary.fails > 0).length}
+                    collapsed={isCollapsed}
+                    onToggle={() => toggleSection(key)}
+                  />
+                ) : null}
+                {isCollapsed ? null : (
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {sec.rows.map(({ summary, rankRow }) => {
+                    const s: Student = summary.student;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSelectedKey(`${s.id}|${summary.term}`)}
+                        className="row-interactive rounded-xl border bg-card px-4 py-3 text-left shadow-xs outline-none hover:border-primary/50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                            {s.name}
+                            <span className="ml-1.5 text-xs font-normal text-muted-foreground">{s.student_no}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Trophy className="size-3.5" />
+                            {rankRow ? `${rankRow.rank}/${rankRow.total}` : "未定"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{summary.rows.length} 门课</p>
+                        <div className="mt-2 flex items-center gap-3 text-xs">
+                          <span className="text-muted-foreground">综合 <b className="tabular-nums text-foreground">{fmt1(summary.composite)}</b></span>
+                          <span className="text-muted-foreground">GPA <b className="tabular-nums text-foreground">{summary.gpa ?? "–"}</b></span>
+                          {summary.usual === null ? (
+                            <Badge variant="outline" className="border-transparent bg-amber-500/10 font-normal text-amber-600">平时未录</Badge>
+                          ) : null}
+                          {summary.fails > 0 ? (
+                            <Badge variant="outline" className="border-transparent bg-rose-500/10 font-normal text-rose-600">挂 {summary.fails} 门</Badge>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                )}
+              </div>
+              );
+            })}
           </section>
         ))
       )}

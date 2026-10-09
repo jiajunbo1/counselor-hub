@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { FileUp, Save, Settings2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,8 @@ import { termNow, useTermScope } from "@/hooks/use-term-scope";
 import { TERM_EVAL_COLUMNS, exportCsv } from "@/lib/import-export";
 import { gradesOfTerm, round1, summarizeTerm, termAttendDeduct } from "@/lib/evaluation";
 import { compareRankSortable, rankRowsByClass, type RankSortMode } from "@/lib/rank-view";
-import { RankSortControl, sortCaption, sortOptionsFor } from "./SortControl";
+import { RankSortControl, sortCaption, SECTION_SORT_OPTIONS } from "./SortControl";
+import { ClassChips, SectionBand, classNamesOf, sectionsByClass, useCollapsedSections } from "./class-section";
 import { ALL, SCORE_RE, SegPills, fmt1, HOT_CLASS } from "./parts";
 import { RulesDialog } from "./Attendance";
 import ScoreDetailDialog, { type GotoFn, type ScoreDetail } from "./ScoreDetail";
@@ -36,13 +37,13 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
   const term = termNow(termScope);
   const classScope = useClassScope();
   const [sortMode, setSortMode] = useState<RankSortMode>("class_rank");
-  const [groupByClass, setGroupByClass] = useState(true);
   const [keyword, setKeyword] = useState(focusNo ?? "");
   const [scope, setScope] = useState(ALL);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [importing, setImporting] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { collapsed, toggle: toggleSection } = useCollapsedSections();
 
   const activeTerm = term === ALL ? "" : term;
   const [detail, setDetail] = useState<ScoreDetail | null>(null);
@@ -53,8 +54,8 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
 
   const coursesById = useMemo(() => new Map(store.courses.map((c) => [c.id, c])), [store.courses]);
 
-  // 名次按「全班该学期已保存的数据」算，不受搜索/录入状态筛选影响；草稿不参与，避免录入时整行跳动
-  const rankOf = useMemo(() => {
+  // 名次/挂科按「全班该学期已保存的数据」算，不受搜索/录入状态筛选影响；草稿不参与，避免录入时整行跳动
+  const rankModel = useMemo(() => {
     const all = store.students.map((s) => ({
       student: s,
       summary: summarizeTerm(
@@ -67,7 +68,10 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
         store.evaluation
       ),
     }));
-    return rankRowsByClass(all);
+    return {
+      ranks: rankRowsByClass(all),
+      fails: new Map(all.map((r) => [r.student.id, r.summary?.fails ?? 0])),
+    };
   }, [store.students, store.grades, store.attendance, store.evaluation, coursesById, evalByStudent, activeTerm]);
 
   const valueOf = (studentId: string, field: keyof Draft): string =>
@@ -85,11 +89,28 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
         const raw = draft ? draft.usual_score : saved?.usual_score ?? "";
         const usualNum = raw !== "" && SCORE_RE.test(raw) ? Number(raw) : null;
         const usualEff = usualNum === null ? null : clamp01(usualNum - deduct);
-        return { student: s, saved, counts, deduct, raw, usualEff, dirty: !!draft && (draft.usual_score !== (saved?.usual_score ?? "") || draft.note !== (saved?.note ?? "")), rankRow: rankOf.get(s.id) ?? null };
+        return { student: s, saved, counts, deduct, raw, usualEff, dirty: !!draft && (draft.usual_score !== (saved?.usual_score ?? "") || draft.note !== (saved?.note ?? "")), rankRow: rankModel.ranks.get(s.id) ?? null, fails: rankModel.fails.get(s.id) ?? 0 };
       })
       .filter((r) => (scope === "done" ? r.saved !== null : scope === "todo" ? r.saved === null : true))
-      .sort(compareRankSortable(sortMode, groupByClass));
-  }, [store.students, store.attendance, store.evaluation, classScope, keyword, scope, activeTerm, evalByStudent, drafts, rankOf, sortMode, groupByClass]);
+      .sort(compareRankSortable(sortMode, true));
+  }, [store.students, store.attendance, store.evaluation, classScope, keyword, scope, activeTerm, evalByStudent, drafts, rankModel, sortMode]);
+
+  const sections = useMemo(() => sectionsByClass(rows, (r) => r.student.class_name), [rows]);
+  const classNames = useMemo(() => classNamesOf(store.students), [store.students]);
+
+  // 班级胶囊人数 = 该班在「已录入/未录入」筛选下出现的学生数（不受班级选择与搜索框影响）
+  const chipCounts = useMemo(() => {
+    const byClass = new Map<string, number>();
+    let all = 0;
+    for (const s of store.students) {
+      if (scope === "done" && !evalByStudent.has(s.id)) continue;
+      if (scope === "todo" && evalByStudent.has(s.id)) continue;
+      all += 1;
+      const cls = s.class_name || "未分班";
+      byClass.set(cls, (byClass.get(cls) ?? 0) + 1);
+    }
+    return { byClass, all };
+  }, [store.students, evalByStudent, scope]);
 
   const dirtyCount = rows.filter((r) => r.dirty).length;
   const doneCount = useMemo(() => store.students.filter((s) => evalByStudent.has(s.id)).length, [store.students, evalByStudent]);
@@ -193,18 +214,13 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
             onChange={setScope}
           />
         </div>
-        <RankSortControl
-          mode={sortMode}
-          onMode={setSortMode}
-          options={sortOptionsFor(classScope.cls === ALL_CLASS, true)}
-          groupByClass={groupByClass}
-          onGroupByClass={setGroupByClass}
-          showGroupToggle={classScope.cls === ALL_CLASS && sortMode === "composite"}
-        />
+        <RankSortControl mode={sortMode} onMode={setSortMode} options={SECTION_SORT_OPTIONS} />
         <span className="text-xs text-muted-foreground">
-          {activeTerm || "暂无学期"} · 录入的是扣分前的原始分，考勤扣分自动折算；点「折算后」看明细 · 当前{sortCaption(sortMode, groupByClass)}，名次以已保存数据计，不受录入草稿影响
+          {activeTerm || "暂无学期"} · 录入的是扣分前的原始分，考勤扣分自动折算；点「折算后」看明细 · 当前{sortCaption(sortMode)}，名次以已保存数据计，不受录入草稿影响
         </span>
       </div>
+
+      <ClassChips classNames={classNames} counts={chipCounts.byClass} allCount={chipCounts.all} />
 
       {rows.length === 0 ? (
         <EmptyHint text={store.students.length === 0 ? "还没有学生档案。" : "没有符合条件的学生。"} />
@@ -214,7 +230,7 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
             <thead>
               <tr className="bg-muted/40 text-left text-[11px] text-muted-foreground">
                 <th className="col-sticky-left px-3 py-2 font-medium">姓名 / 学号</th>
-                <th className="px-2 py-2 text-left font-medium">班级</th>
+                <th className="px-2 py-2 text-center font-medium">名次</th>
                 <th className="px-2 py-2 text-center font-medium">考勤（旷/迟/早/假）</th>
                 <th className="px-2 py-2 text-center font-medium">扣分</th>
                 <th className="px-2 py-2 text-center font-medium">平时总评</th>
@@ -224,63 +240,81 @@ export default function TermEvalView({ store, goto, focusNo }: { store: Store; g
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.student.id} className="border-t">
-                  <td className="col-sticky-left px-3 py-1.5 whitespace-nowrap">
-                    <span className="mr-1.5 text-xs font-semibold tabular-nums text-muted-foreground">{r.rankRow ? `#${r.rankRow.rank}/${r.rankRow.total}` : "未定"}</span>
-                    <span className="font-medium">{r.student.name}</span>
-                    <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
-                  </td>
-                  <td className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">{r.student.class_name || "未分班"}</td>
-                  <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
-                    {r.counts.absent || r.counts.late || r.counts.early || r.counts.leave
-                      ? `${r.counts.absent}/${r.counts.late}/${r.counts.early}/${r.counts.leave}`
-                      : "满勤"}
-                  </td>
-                  <td className="px-2 py-1.5 text-center text-xs tabular-nums">
-                    {r.deduct > 0 ? <span className="font-semibold text-amber-600">-{fmt1(r.deduct)}</span> : <span className="text-muted-foreground">0</span>}
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <Input
-                      value={valueOf(r.student.id, "usual_score")}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: e.target.value.replace(/[^\d.]/g, ""), note: d[r.student.id]?.note ?? r.saved?.note ?? "" } }))}
-                      placeholder="0-100"
-                      inputMode="decimal"
-                      maxLength={5}
-                      className="mx-auto w-20 text-center"
+              {sections.map((sec) => {
+                const isCollapsed = classScope.cls === ALL_CLASS && collapsed.has(sec.cls);
+                return (
+                <Fragment key={sec.cls}>
+                  {classScope.cls === ALL_CLASS ? (
+                    <SectionBand
+                      colSpan={8}
+                      cls={sec.cls}
+                      count={sec.rows.length}
+                      fails={sec.rows.filter((r) => r.fails > 0).length}
+                      collapsed={isCollapsed}
+                      onToggle={() => toggleSection(sec.cls)}
                     />
-                  </td>
-                  <td className="px-2 py-1.5 text-center text-sm font-semibold tabular-nums">
-                    {r.usualEff === null ? (
-                      <span className="text-xs font-normal text-amber-600">未录入</span>
-                    ) : (
-                      <button type="button" className={"rounded px-1 underline decoration-dotted decoration-from-font underline-offset-4 " + HOT_CLASS} onClick={() => setDetail({ kind: "term", student: r.student, term: activeTerm })}>
-                        {round1(r.usualEff)}
-                      </button>
-                    )}
-                  </td>
-                  <td className="hidden px-2 py-1.5 lg:table-cell">
-                    <Input
-                      value={valueOf(r.student.id, "note")}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: d[r.student.id]?.usual_score ?? r.saved?.usual_score ?? "", note: e.target.value } }))}
-                      placeholder="选填"
-                      maxLength={200}
-                      className="w-full min-w-24"
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    {r.dirty ? (
-                      <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => void saveOne(r.student.id).then((ok) => ok && setDrafts((d) => { const n = { ...d }; delete n[r.student.id]; return n; }))}>
-                        保存
-                      </Button>
-                    ) : r.saved ? (
-                      <Badge variant="outline" className="border-transparent bg-emerald-500/10 font-normal text-emerald-700">已录</Badge>
-                    ) : (
-                      <Badge variant="outline" className="border-transparent bg-muted font-normal text-muted-foreground">未录</Badge>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                  ) : null}
+                  {isCollapsed ? null : sec.rows.map((r) => (
+                    <tr key={r.student.id} className="border-t">
+                      <td className="col-sticky-left px-3 py-1.5 whitespace-nowrap">
+                        <span className="font-medium">{r.student.name}</span>
+                        <span className="ml-1 text-xs text-muted-foreground">{r.student.student_no}</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-center text-xs font-semibold tabular-nums text-muted-foreground whitespace-nowrap">
+                        {r.rankRow ? `#${r.rankRow.rank}/${r.rankRow.total}` : "未定"}
+                      </td>
+                      <td className="px-2 py-1.5 text-center text-xs tabular-nums text-muted-foreground">
+                        {r.counts.absent || r.counts.late || r.counts.early || r.counts.leave
+                          ? `${r.counts.absent}/${r.counts.late}/${r.counts.early}/${r.counts.leave}`
+                          : "满勤"}
+                      </td>
+                      <td className="px-2 py-1.5 text-center text-xs tabular-nums">
+                        {r.deduct > 0 ? <span className="font-semibold text-amber-600">-{fmt1(r.deduct)}</span> : <span className="text-muted-foreground">0</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        <Input
+                          value={valueOf(r.student.id, "usual_score")}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: e.target.value.replace(/[^\d.]/g, ""), note: d[r.student.id]?.note ?? r.saved?.note ?? "" } }))}
+                          placeholder="0-100"
+                          inputMode="decimal"
+                          maxLength={5}
+                          className="mx-auto w-20 text-center"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-center text-sm font-semibold tabular-nums">
+                        {r.usualEff === null ? (
+                          <span className="text-xs font-normal text-amber-600">未录入</span>
+                        ) : (
+                          <button type="button" className={"rounded px-1 underline decoration-dotted decoration-from-font underline-offset-4 " + HOT_CLASS} onClick={() => setDetail({ kind: "term", student: r.student, term: activeTerm })}>
+                            {round1(r.usualEff)}
+                          </button>
+                        )}
+                      </td>
+                      <td className="hidden px-2 py-1.5 lg:table-cell">
+                        <Input
+                          value={valueOf(r.student.id, "note")}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [r.student.id]: { usual_score: d[r.student.id]?.usual_score ?? r.saved?.usual_score ?? "", note: e.target.value } }))}
+                          placeholder="选填"
+                          maxLength={200}
+                          className="w-full min-w-24"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        {r.dirty ? (
+                          <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => void saveOne(r.student.id).then((ok) => ok && setDrafts((d) => { const n = { ...d }; delete n[r.student.id]; return n; }))}>
+                            保存
+                          </Button>
+                        ) : r.saved ? (
+                          <Badge variant="outline" className="border-transparent bg-emerald-500/10 font-normal text-emerald-700">已录</Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-transparent bg-muted font-normal text-muted-foreground">未录</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </TableShell>
