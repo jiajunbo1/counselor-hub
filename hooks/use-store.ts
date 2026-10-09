@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiGet, apiGetRaw, apiPost } from "@/lib/api";
-import type { Attachment, AttendanceItem, AuditLog, Course, EvaluationSettings, FeedbackItem, Grade, HonorItem, LeaveRules, MessageItem, PositionItem, RecordItem, Room, Student, StudentPhoto, TermEvaluation } from "@/lib/types";
+import type { Attachment, AttendanceItem, AuditLog, ChangelogItem, Course, EvaluationSettings, FeedbackItem, Grade, HonorItem, LeaveRules, MessageItem, PositionItem, RecordItem, Room, Student, StudentPhoto, TermEvaluation } from "@/lib/types";
 
 export type StoreScope = "admin" | "staff" | "student";
 
@@ -22,6 +22,7 @@ export interface Store {
   positions: PositionItem[];
   honors: HonorItem[];
   photos: StudentPhoto[];
+  changelog: ChangelogItem[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -48,12 +49,13 @@ export function useStore(scope: StoreScope): Store {
   const [positions, setPositions] = useState<PositionItem[]>([]);
   const [honors, setHonors] = useState<HonorItem[]>([]);
   const [photos, setPhotos] = useState<StudentPhoto[]>([]);
+  const [changelog, setChangelog] = useState<ChangelogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [st, re, ro, co, gr, lo, at, me, fb, ru, td, te, ev, po, ph, ho] = await Promise.all([
+      const [st, re, ro, co, gr, lo, at, me, fb, ru, td, te, ev, po, ph, ho, cg] = await Promise.all([
         apiGet<Student>("students"),
         apiGet<RecordItem>("records"),
         apiGet<Room>("rooms"),
@@ -80,6 +82,8 @@ export function useStore(scope: StoreScope): Store {
         apiGet<StudentPhoto>("photos").catch(() => [] as StudentPhoto[]),
         // 荣誉台账学生端不可见（服务端同样硬拒），学生 scope 直接不发请求
         scope === "student" ? Promise.resolve([] as HonorItem[]) : apiGet<HonorItem>("honors").catch(() => [] as HonorItem[]),
+        // 更新公告全角色可读（服务端按受众过滤）；失败不阻塞
+        apiGet<ChangelogItem>("changelog").catch(() => [] as ChangelogItem[]),
       ]);
       setStudents(st);
       setRecords(re);
@@ -97,6 +101,7 @@ export function useStore(scope: StoreScope): Store {
       setPositions(po);
       setPhotos(ph);
       setHonors(ho);
+      setChangelog(cg);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -129,5 +134,5 @@ export function useStore(scope: StoreScope): Store {
     [refresh]
   );
 
-  return { students, records, rooms, courses, grades, logs, attachments, messages, feedback, rules, attendance, termEvals, evaluation, positions, honors, photos, loading, error, refresh, write };
+  return { students, records, rooms, courses, grades, logs, attachments, messages, feedback, rules, attendance, termEvals, evaluation, positions, honors, photos, changelog, loading, error, refresh, write };
 }

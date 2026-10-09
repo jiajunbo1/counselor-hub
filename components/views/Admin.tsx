@@ -1,12 +1,13 @@
-import { History, Lightbulb, ShieldCheck } from "lucide-react";
+import { History, Lightbulb, Megaphone, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Store } from "@/hooks/use-store";
 import type { MemberUser } from "@/lib/session";
 import AccountsView from "@/components/views/Accounts";
 import LogsView from "@/components/views/Logs";
 import { FeedbackAdminView } from "@/components/views/Feedback";
+import { NoticesAdminView } from "@/components/views/Notices";
 
-export type AdminSection = "accounts" | "logs" | "feedback";
+export type AdminSection = "accounts" | "logs" | "feedback" | "notices";
 
 export default function AdminView({
   store,
@@ -44,6 +45,16 @@ export default function AdminView({
         </Button>
         <Button
           size="sm"
+          variant={section === "notices" ? "secondary" : "ghost"}
+          className={
+            "flex-1 justify-start " + (section === "notices" ? "font-semibold text-primary" : "text-muted-foreground")
+          }
+          onClick={() => onSection("notices")}
+        >
+          <Megaphone className="size-4" /> 更新公告
+        </Button>
+        <Button
+          size="sm"
           variant={section === "logs" ? "secondary" : "ghost"}
           className={
             "flex-1 justify-start " + (section === "logs" ? "font-semibold text-primary" : "text-muted-foreground")
@@ -57,6 +68,8 @@ export default function AdminView({
         <AccountsView currentMember={currentMember} />
       ) : section === "feedback" ? (
         <FeedbackAdminView store={store} />
+      ) : section === "notices" ? (
+        <NoticesAdminView store={store} />
       ) : (
         <LogsView store={store} />
       )}

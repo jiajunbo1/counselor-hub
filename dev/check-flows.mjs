@@ -1294,5 +1294,94 @@ results.push(
     : `FAIL wCleanup ${JSON.stringify(wClean.data?.map((h) => h.title))}`
 );
 
+// ===== 批次 Z：更新公告（分角色可见 / 仅管理员可写 / 编辑与删除 / 审计）=====
+const zCounselor = await post({ action: "account.create", username: "znotice-counselor", display_name: "公告测试辅导员", role: "counselor", password: "zn123456" }, T);
+const zLogin0 = await post({ action: "auth.login", username: "znotice-counselor", password: "zn123456" });
+// account.create 的新账号是首登强制改密态，未改密前一切业务读写都被 403 挡住
+await post({ action: "auth.change_password", old_password: "zn123456", new_password: "zn654321" }, zLogin0.token);
+const zCT = zLogin0.token;
+const zReg = await post({ action: "auth.student_register", student_no: "Z900000001", name: "公告测试生" });
+const zLogin = await post({ action: "auth.login", username: "z900000001", password: "123456" });
+await post({ action: "auth.change_password", old_password: "123456", new_password: "zn889900" }, zLogin.token);
+const zST = zLogin.token;
+const zSid = zReg.member?.student_id;
+results.push(zCT && zST && zSid ? "PASS 批次Z fixture accounts ready" : `FAIL zFixture ${JSON.stringify(zCounselor).slice(0, 120)}`);
+
+const zNoToken = await get("changelog");
+results.push(zNoToken.code === "login_required" && zNoToken.status === 401 ? "PASS changelog read requires session" : `FAIL zNoToken ${JSON.stringify(zNoToken)}`);
+const zAdmin = await get("changelog", T);
+results.push(
+  zAdmin.ok && zAdmin.data.length === 2 && zAdmin.data[0].created_at > zAdmin.data[1].created_at
+    ? "PASS admin sees both seed notices, newest first"
+    : `FAIL zAdmin ${JSON.stringify(zAdmin).slice(0, 200)}`
+);
+const zStuSeed = await get("changelog", zST);
+results.push(
+  zStuSeed.ok && zStuSeed.data.length === 2 && zStuSeed.data.every((c) => c.audience !== "staff")
+    ? "PASS student sees all+student notices (seed has no staff row yet)"
+    : `FAIL zStuSeed ${JSON.stringify(zStuSeed).slice(0, 160)}`
+);
+
+// 写入门禁：辅导员与学生都被拒，匿名要登录
+const zStuWrite = await post({ action: "changelog.save", title: "学生发公告", content: "不该成功", audience: "all" }, zST);
+results.push(zStuWrite.code === "access_denied" && zStuWrite.status === 403 ? "PASS student cannot publish notices" : `FAIL zStuWrite ${JSON.stringify(zStuWrite)}`);
+const zCTWrite = await post({ action: "changelog.save", title: "辅导员发公告", content: "不该成功", audience: "all" }, zCT);
+results.push(zCTWrite.code === "access_denied" ? "PASS counselor cannot publish notices" : `FAIL zCTWrite ${JSON.stringify(zCTWrite)}`);
+const zAnonWrite = await post({ action: "changelog.save", title: "匿名", content: "x", audience: "all" });
+results.push(zAnonWrite.code === "login_required" ? "PASS anonymous publish rejected" : `FAIL zAnonWrite ${JSON.stringify(zAnonWrite)}`);
+
+// 校验：缺标题/非法受众/非法 id/未知行更新
+const zNoTitle = await post({ action: "changelog.save", title: "", content: "正文", audience: "all" }, T);
+results.push(zNoTitle.code === "invalid_request" ? "PASS empty title rejected" : `FAIL zNoTitle ${JSON.stringify(zNoTitle)}`);
+const zBadAud = await post({ action: "changelog.save", title: "t", content: "c", audience: "everyone" }, T);
+results.push(zBadAud.code === "invalid_request" ? "PASS invalid audience rejected" : `FAIL zBadAud ${JSON.stringify(zBadAud)}`);
+const zBadId = await post({ action: "changelog.save", id: "not-a-uuid", title: "t", content: "c", audience: "all" }, T);
+results.push(zBadId.code === "invalid_id" ? "PASS malformed id rejected" : `FAIL zBadId ${JSON.stringify(zBadId)}`);
+const zGhostUpdate = await post({ action: "changelog.save", id: "00000000-0000-4000-8000-000000000000", title: "t", content: "c", audience: "all" }, T);
+results.push(zGhostUpdate.code === "not_found" && zGhostUpdate.status === 404 ? "PASS update of unknown notice is 404" : `FAIL zGhostUpdate ${JSON.stringify(zGhostUpdate)}`);
+const zGhostDelete = await post({ action: "changelog.delete", id: "00000000-0000-4000-8000-000000000000" }, T);
+results.push(zGhostDelete.code === "not_found" ? "PASS delete of unknown notice is 404" : `FAIL zGhostDelete ${JSON.stringify(zGhostDelete)}`);
+
+// 发布三条：全员 / 仅教职工 / 仅学生，分角色可见性各验一次
+const zAll = await post({ action: "changelog.save", title: "全员新公告", content: "所有角色都应看到这条。", audience: "all" }, T);
+const zStaff = await post({ action: "changelog.save", title: "教职工专用", content: "辅导员端口径说明。", audience: "staff" }, T);
+const zStudent = await post({ action: "changelog.save", title: "学生专用", content: "同学端提醒。", audience: "student" }, T);
+results.push(zAll.ok && zStaff.ok && zStudent.ok ? "PASS admin publishes three notices" : `FAIL zSave ${JSON.stringify(zAll).slice(0, 120)}`);
+const zStu = (await get("changelog", zST)).data.map((c) => c.title);
+const zCounselorList = (await get("changelog", zCT)).data.map((c) => c.title);
+const zAdminList = (await get("changelog", T)).data.map((c) => c.title);
+results.push(
+  zStu.includes("全员新公告") && zStu.includes("学生专用") && !zStu.includes("教职工专用")
+    ? "PASS student visibility: all+student only" : `FAIL zStuVis ${JSON.stringify(zStu)}`
+);
+results.push(
+  zCounselorList.includes("全员新公告") && zCounselorList.includes("教职工专用") && !zCounselorList.includes("学生专用")
+    ? "PASS counselor visibility: all+staff only" : `FAIL zCVis ${JSON.stringify(zCounselorList)}`
+);
+results.push(zAdminList.length === 5 ? "PASS admin sees every audience" : `FAIL zAdminVis ${JSON.stringify(zAdminList)}`);
+
+// 编辑：带 id 更新原行，不新增
+const zEdit = await post({ action: "changelog.save", id: zAll.item?.id, title: "全员新公告（已改）", content: "改过的正文。", audience: "student" }, T);
+const zAfterEdit = await get("changelog", T);
+results.push(
+  zEdit.ok && zEdit.item?.id === zAll.item?.id && zEdit.item?.title === "全员新公告（已改）" && zEdit.item?.body === "改过的正文。" && zAfterEdit.data.length === 5
+    ? "PASS save with id updates in place (no duplicate row)" : `FAIL zEdit ${JSON.stringify(zEdit).slice(0, 160)} n=${zAfterEdit.data?.length}`
+);
+
+// 审计：发布公告动作入库
+const zLog = (await get("audit_logs", T)).data.find((l) => l.action === "changelog.save");
+results.push(zLog ? "PASS changelog.save is audited" : "FAIL changelog audit missing");
+
+// 收尾：删掉三条测试公告（其中一条已被改成学生可见），回到两条种子
+for (const id of [zAll.item?.id, zStaff.item?.id, zStudent.item?.id]) await post({ action: "changelog.delete", id }, T);
+if (zSid) await post({ action: "student.delete", id: zSid }, T);
+const zAcct = (await get("account.list", T)).data.find((u) => u.username === "znotice-counselor");
+if (zAcct) await post({ action: "account.update", id: zAcct.id, status: "disabled" }, T);
+const zClean = await get("changelog", T);
+results.push(
+  zClean.ok && zClean.data.length === 2 && zClean.data.every((c) => !String(c.title).startsWith("全员新公告") && c.title !== "教职工专用" && c.title !== "学生专用")
+    ? "PASS 批次Z cleanup restores the two seed notices" : `FAIL zCleanup ${JSON.stringify(zClean.data?.map((c) => c.title))}`
+);
+
 console.log(results.join("\n"));
 console.log(results.every((r) => r.startsWith("PASS")) ? `\nALL ${results.length} CASES PASS` : "\nSOME FAILED");

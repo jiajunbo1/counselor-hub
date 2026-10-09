@@ -25,6 +25,8 @@ const POSITION_COLS = "id,student_id,title,note,status,appointed_on,revoked_at,a
 const POSITION_STATUSES = ["active", "revoked"];
 const HONOR_COLS = "id,student_id,title,level,term,granted_on,note,status,revoked_at,granted_by,created_at,updated_at";
 const HONOR_LEVELS = ["国家级", "省级", "校级", "院级", "班级"];
+const CHANGELOG_COLS = "id,title,body,audience,created_at,updated_at";
+const CHANGELOG_AUDIENCES = ["all", "staff", "student"];
 // 挂科口径与 lib/evaluation.ts 的 PASS_SCORE 一致：考试分低于 60 即一票否决荣誉
 const PASS_SCORE = 60;
 const DEFAULT_EVAL = { exam_weight: "70", usual_weight: "30", absent_deduct: "5", late_deduct: "1", leave_deduct: "0" };
@@ -1388,6 +1390,51 @@ async function handleFeedbackWrite({ supabase, action, body, member }) {
   }
 }
 
+// 更新公告：仅管理员维护（与 feedback.reply 同一道门禁）
+async function handleChangelogWrite({ supabase, action, body }) {
+  switch (action) {
+    case "changelog.save": {
+      // str 的 max 按 UTF-8 字节计：60 汉字≈180 字节、2000 汉字≈6000 字节，前端按字数再限一道
+      const title = str(body.title, { max: 180, required: true });
+      const content = str(body.content, { max: 6000, required: true });
+      const audience = oneOf(body.audience, CHANGELOG_AUDIENCES, { required: true });
+      if (!title || !content || !audience) return fail("invalid_request");
+      const now = new Date().toISOString();
+      const id = body.id === undefined ? null : idOf(body.id);
+      if (body.id !== undefined && !id) return fail("invalid_id");
+      if (id) {
+        const { data, error } = await supabase
+          .from("changelog")
+          .update({ title, body: content, audience, updated_at: now })
+          .eq("id", id)
+          .select(CHANGELOG_COLS)
+          .maybeSingle();
+        if (error) return fail("database_request_failed", 503);
+        if (!data) return fail("not_found", 404);
+        return json({ ok: true, item: data });
+      }
+      const { data, error } = await supabase
+        .from("changelog")
+        .insert({ id: crypto.randomUUID(), title, body: content, audience, created_at: now, updated_at: now })
+        .select(CHANGELOG_COLS)
+        .single();
+      if (error) return fail("database_request_failed", 503);
+      return json({ ok: true, item: data });
+    }
+    case "changelog.delete": {
+      const id = idOf(body.id);
+      if (!id) return fail("invalid_id");
+      const { data, error } = await supabase
+        .from("changelog").delete().eq("id", id).select("id").maybeSingle();
+      if (error) return fail("database_request_failed", 503);
+      if (!data) return fail("not_found", 404);
+      return json({ ok: true, item: data });
+    }
+    default:
+      return fail("unknown_action", 404);
+  }
+}
+
 async function handleWrite({ supabase, action, body }) {
   switch (action) {
     case "student.create": {
@@ -2263,10 +2310,17 @@ async function handleRead({ supabase, params, member }) {
     const mine = member.role === "student" ? rows.filter((p) => p.student_id === member.student_id) : rows;
     return json({ ok: true, data: mine.map(publicPhoto) });
   }
+  if (action === "changelog") {
+    const items = await listAll(supabase, "changelog", CHANGELOG_COLS, "created_at", 200, false);
+    const visible = member.role === "admin"
+      ? items
+      : items.filter((c) => c.audience === "all" || c.audience === (member.role === "student" ? "student" : "staff"));
+    return json({ ok: true, data: visible });
+  }
   return fail("unknown_action", 404);
 }
 
-const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "honors", "classmates", "photos"]);
+const BUSINESS_READS = new Set(["students", "records", "rooms", "courses", "grades", "audit_logs", "attachments", "messages", "leave_rules", "registration_settings", "feedback", "attendance", "term_evaluations", "evaluation_settings", "positions", "honors", "classmates", "photos", "changelog"]);
 const PUBLIC_WRITE_ACTIONS = new Set(["auth.lookup", "auth.login", "auth.bootstrap", "auth.student_register"]);
 const SELF_WRITE_ACTIONS = new Set(["auth.logout", "auth.change_password", "auth.bind_phone"]);
 const STUDENT_WRITE_ACTIONS = new Set(["profile.submit", "leave.submit", "leave.cancel", "message.send", "attendance.report"]);
@@ -2276,10 +2330,11 @@ const FEEDBACK_SUBMIT_ACTIONS = new Set(["feedback.submit"]);
 const FEEDBACK_ADMIN_ACTIONS = new Set(["feedback.reply"]);
 const ATTACHMENT_ACTIONS = new Set(["attachment.prepare", "attachment.complete", "attachment.download", "attachment.delete"]);
 const PHOTO_ACTIONS = new Set(["photo.prepare", "photo.complete", "photo.delete", "photo.urls"]);
+const CHANGELOG_ADMIN_ACTIONS = new Set(["changelog.save", "changelog.delete"]);
 const BUSINESS_ACTIONS = new Set([
   ...WRITE_ACTIONS, ...SELF_WRITE_ACTIONS, ...ADMIN_WRITE_ACTIONS,
   ...ATTACHMENT_ACTIONS, ...PHOTO_ACTIONS, ...STUDENT_WRITE_ACTIONS, ...STAFF_WRITE_ACTIONS,
-  ...FEEDBACK_SUBMIT_ACTIONS, ...FEEDBACK_ADMIN_ACTIONS,
+  ...FEEDBACK_SUBMIT_ACTIONS, ...FEEDBACK_ADMIN_ACTIONS, ...CHANGELOG_ADMIN_ACTIONS,
 ]);
 
 // 管理员动作的审计详情：绝不记录口令字段
@@ -2375,6 +2430,9 @@ export async function handleApi({ request, supabase }) {
       res = await handleAttachmentWrite({ supabase, action, body, member });
     } else if (PHOTO_ACTIONS.has(action)) {
       res = await handlePhotoWrite({ supabase, action, body, member });
+    } else if (CHANGELOG_ADMIN_ACTIONS.has(action)) {
+      if (member.role !== "admin") return fail("access_denied", 403);
+      res = await handleChangelogWrite({ supabase, action, body, member });
     } else {
       res = await handleWrite({ supabase, action, body });
     }

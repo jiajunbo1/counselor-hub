@@ -25,6 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { AppearanceMenu, AppearancePanel } from "@/components/Appearance";
+import { ChangelogBell } from "@/components/ChangelogBell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useTheme } from "@/lib/theme";
@@ -32,6 +33,13 @@ import { useStore, type Store } from "@/hooks/use-store";
 import { useAuth, type Auth } from "@/hooks/use-auth";
 import { ALL_CLASS, ClassScopeProvider, useClassScope } from "@/hooks/use-class-scope";
 import { ALL_TERM, TermScopeProvider, useTermScope } from "@/hooks/use-term-scope";
+
+/** 侧栏窄容器里学期触发器的显示缩写：2025-2026-2 → 25-26-2（下拉列表与全站文案仍用全称） */
+function shortTerm(term: string): string | undefined {
+  if (!term || term === ALL_TERM) return undefined;
+  const m = term.match(/^(?:19|20)(\d{2})-(?:19|20)(\d{2})-(\d)$/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : undefined;
+}
 import { Select } from "@/components/form";
 import OverviewView from "@/components/views/Overview";
 import StudentsView from "@/components/views/Students";
@@ -270,13 +278,29 @@ function Workspace({ auth }: { auth: Auth }) {
             <div className="text-gradient text-base font-extrabold tracking-tight">辅导员工作台</div>
             <div className="truncate text-[11px] text-muted-foreground">学生工作信息管理</div>
           </div>
+          <div className="ml-auto shrink-0">
+            <ChangelogBell memberId={member.id} entries={store.changelog} />
+          </div>
         </div>
         {!isStudent ? (
-          <div className="px-3 pb-1">
-            <div className="px-1 pb-1 text-[11px] font-semibold tracking-widest text-muted-foreground/70">当前班级</div>
-            <Select value={scope.cls} onValueChange={scope.setCls} options={classOptions} ariaLabel="班级作用域" />
-            <div className="px-1 pb-1 pt-2 text-[11px] font-semibold tracking-widest text-muted-foreground/70">当前学期</div>
-            <Select value={termScope.term || ALL_TERM} onValueChange={termScope.setTerm} options={termOptions} ariaLabel="学期作用域" />
+          <div className="grid grid-cols-2 gap-2 px-3 pb-2">
+            <Select
+              value={scope.cls}
+              onValueChange={scope.setCls}
+              options={classOptions}
+              ariaLabel="班级作用域"
+              className="text-xs [&>[data-slot=select-value]]:!w-full"
+              title={`当前班级：${classOptions.find((o) => o.value === scope.cls)?.label ?? ""}`}
+            />
+            <Select
+              value={termScope.term || ALL_TERM}
+              onValueChange={termScope.setTerm}
+              options={termOptions}
+              ariaLabel="学期作用域"
+              className="text-xs tabular-nums [&>[data-slot=select-value]]:!w-full"
+              display={shortTerm(termScope.term)}
+              title={`当前学期：${termOptions.find((o) => o.value === (termScope.term || ALL_TERM))?.label ?? ""}`}
+            />
           </div>
         ) : null}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2" aria-label="主导航">
@@ -380,6 +404,7 @@ function Workspace({ auth }: { auth: Auth }) {
             </div>
           ) : null}
           <div className="flex items-center gap-0.5">
+            <ChangelogBell memberId={member.id} entries={store.changelog} />
             <AppearanceMenu />
             <Button variant="ghost" size="icon" onClick={() => void store.refresh()} aria-label="刷新数据">
               <RefreshCw className="size-4" />

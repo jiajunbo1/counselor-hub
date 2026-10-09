@@ -70,6 +70,7 @@ const db = {
   student_positions: [],
   student_honors: [],
   student_photos: [],
+  changelog: [],
 };
 
 // 内存假存储：模拟平台注入的 storage SDK 与同源相对签名 URL。
@@ -271,6 +272,17 @@ const seed = () => {
     status: "optimizing", reply_note: "已排入开发计划，下个版本支持楼栋筛选。",
     replied_at: "2026-09-22T10:00:00Z", created_at: "2026-09-21T08:30:00Z", updated_at: "2026-09-22T10:00:00Z",
   });
+  // 更新公告演示：一条全员可见 + 一条仅学生可见（学生端列表不应出现前者之外的教职工条目）
+  db.changelog.push({
+    id: randomUUID(), title: "班级/学期作用域统一",
+    body: "侧栏新增学期选择器，成绩、考勤、荣誉等页面统一跟随班级与学期作用域；请假审批改为全局口径，不再受班级筛选影响。",
+    audience: "all", created_at: "2026-10-08T09:00:00Z", updated_at: "2026-10-08T09:00:00Z",
+  });
+  db.changelog.push({
+    id: randomUUID(), title: "学生端提醒",
+    body: "请假材料在审批通过后不可再修改，提交前请确认图片清晰完整；如有疑问请在「给辅导员留言」中说明。",
+    audience: "student", created_at: "2026-10-07T15:30:00Z", updated_at: "2026-10-07T15:30:00Z",
+  });
 };
 seed();
 
@@ -298,6 +310,7 @@ const UNIQUE = {
   student_positions: [],
   student_honors: [],
   student_photos: [(row, all) => all.some((r) => r.id !== row.id && r.student_id === row.student_id)],
+  changelog: [],
 };
 const dupError = () => ({ data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } });
 

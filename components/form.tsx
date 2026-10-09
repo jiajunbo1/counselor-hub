@@ -46,25 +46,31 @@ export function Select({
   options,
   className,
   ariaLabel,
+  title,
+  display,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string }[];
   className?: string;
   ariaLabel?: string;
+  title?: string;
+  /** 触发器上的显示文本覆盖（下拉列表仍显示完整 label），用于窄容器缩写 */
+  display?: string;
 }) {
   const encode = (v: string) => (v === "" ? NONE_VALUE : v);
   return (
     <RadixSelect value={encode(value)} onValueChange={(v) => onValueChange(v === NONE_VALUE ? "" : v)}>
       <SelectTrigger
         aria-label={ariaLabel}
+        title={title}
         // ui/select 的 *:data-[slot=select-value]:flex 会让长文本硬切无省略号，这里强制回退为可截断的块级
         className={cn(
           "w-full min-w-0 text-left [&>[data-slot=select-value]]:!inline-block [&>[data-slot=select-value]]:!truncate",
           className
         )}
       >
-        <SelectValue />
+        <SelectValue>{display}</SelectValue>
       </SelectTrigger>
       <SelectContent position="popper" align="start">
         {options.map((o) => (

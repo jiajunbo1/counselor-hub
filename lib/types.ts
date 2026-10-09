@@ -260,6 +260,23 @@ export interface Classmate {
   class_name: string;
 }
 
+// 更新公告（批次 Z）：仅管理员可维护，读取时按受众分角色过滤
+export type ChangelogAudience = "all" | "staff" | "student";
+export interface ChangelogItem {
+  id: string;
+  title: string;
+  body: string;
+  audience: ChangelogAudience;
+  created_at: string;
+  updated_at: string;
+}
+export const CHANGELOG_AUDIENCES: ChangelogAudience[] = ["all", "staff", "student"];
+export const CHANGELOG_AUDIENCE_LABEL: Record<ChangelogAudience, string> = {
+  all: "全员",
+  staff: "仅教职工",
+  student: "仅学生",
+};
+
 export const POSITION_PRESETS = [
   "班长", "副班长", "学习委员", "生活委员", "心理委员", "宣传委员", "体育委员", "舍长", "课代表",
 ];
@@ -356,6 +373,8 @@ export const ACTION_LABEL: Record<string, string> = {
   "photo.prepare": "上传证件照",
   "photo.complete": "完成证件照上传",
   "photo.delete": "删除证件照",
+  "changelog.save": "发布/更新公告",
+  "changelog.delete": "删除公告",
 };
 
 export const RECORD_STATUS_LABEL: Record<RecordStatus, string> = {
