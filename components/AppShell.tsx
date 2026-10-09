@@ -309,7 +309,7 @@ function Workspace({ auth }: { auth: Auth }) {
             />
           </div>
         ) : null}
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2" aria-label="主导航">
+        <nav className="scroll-surface flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2" aria-label="主导航">
           {visibleTabs.map((t, i) => {
             const active = tab === t.id;
             const prev = i > 0 ? visibleTabs[i - 1] : null;

@@ -70,9 +70,11 @@
   --gap-inline: 0.375rem;
   --pad-card: 1rem;
 
-  /* 滚动条：一处定义，跟着 accent / muted 走，明暗与四皮肤自动继承 */
+  /* 滚动条：静息条体跟 muted 走；悬停/拖拽必须用 primary —— accent 是浅底衬色，
+     深色下几乎等于背景色，拿它做拖拽反馈等于「一拖就消失」。 */
   --scroll-thumb: color-mix(in oklab, var(--muted-foreground) 38%, transparent);
-  --scroll-thumb-active: color-mix(in oklab, var(--accent) 65%, transparent);
+  --scroll-thumb-active: color-mix(in oklab, var(--primary) 62%, transparent);
+  --scroll-thumb-grab: color-mix(in oklab, var(--primary) 85%, transparent);
   --scroll-track: transparent;
 
   --sidebar: #f7f8fc;
@@ -608,59 +610,59 @@ h1 {
 
 /* 滚动面统一语言：一处定义槽位、颜色和条体形状。
    放 components 层，好让 scrollbar-none 这类工具类还能覆盖它（消息流自动滚时要藏条）。
+   条体对全站所有滚动容器生效（*）：此前只写 html/.list-scroll/.scroll-surface，
+   侧栏导航、弹窗、下拉这些没挂类的滚动条就漏成了浏览器默认样式（用户实测反馈）。
    注意引擎分流：Chromium 一旦看到 scrollbar-color / scrollbar-width 变成非 auto，
    就会整组忽略 ::-webkit-scrollbar 自定义 —— 所以标准属性只发给 Firefox。 */
 @layer components {
+  /* 槽位只留给常驻滚动面（页面/表格/弹窗）：滚动条出现或消失时内容不左右跳。
+     菜单、下拉这类小浮层不占槽，免得常驻一条 10px 空白。 */
   html,
   .list-scroll,
-  .scroll-surface {
+  .scroll-surface,
+  [role="dialog"],
+  [role="alertdialog"] {
     scrollbar-gutter: stable;
   }
 
   @supports (-moz-appearance: none) {
-    html,
-    .list-scroll,
-    .scroll-surface {
+    /* 火狐只有两档（分不出悬停与拖拽），拖拽加深这一档给不了 */
+    * {
       scrollbar-width: thin;
       scrollbar-color: var(--scroll-thumb) var(--scroll-track);
     }
+    /* :hover 不能全局写 —— html:hover 在鼠标进入页面后恒真，会让页面滚动条常亮 */
     .list-scroll:hover,
-    .scroll-surface:hover {
+    .scroll-surface:hover,
+    [role="dialog"]:hover,
+    [role="alertdialog"]:hover {
       scrollbar-color: var(--scroll-thumb-active) var(--scroll-track);
     }
   }
 
   /* WebKit/Blink：10px 槽里浮一条 6px 圆头胶囊，track 透明让皮肤底透出来 */
   @supports not (-moz-appearance: none) {
-    html::-webkit-scrollbar,
-    .list-scroll::-webkit-scrollbar,
-    .scroll-surface::-webkit-scrollbar {
+    *::-webkit-scrollbar {
       width: 10px;
       height: 10px;
     }
-    html::-webkit-scrollbar-track,
-    .list-scroll::-webkit-scrollbar-track,
-    .scroll-surface::-webkit-scrollbar-track {
+    *::-webkit-scrollbar-track {
       background: var(--scroll-track);
     }
-    html::-webkit-scrollbar-corner,
-    .list-scroll::-webkit-scrollbar-corner,
-    .scroll-surface::-webkit-scrollbar-corner {
+    *::-webkit-scrollbar-corner {
       background: transparent;
     }
-    html::-webkit-scrollbar-thumb,
-    .list-scroll::-webkit-scrollbar-thumb,
-    .scroll-surface::-webkit-scrollbar-thumb {
+    *::-webkit-scrollbar-thumb {
       border: 2px solid transparent;
       border-radius: 9999px;
       background-color: var(--scroll-thumb);
       background-clip: padding-box;
     }
-    .list-scroll::-webkit-scrollbar-thumb:hover,
-    .scroll-surface::-webkit-scrollbar-thumb:hover,
-    html::-webkit-scrollbar-thumb:hover {
+    *::-webkit-scrollbar-thumb:hover {
       background-color: var(--scroll-thumb-active);
-      background-clip: padding-box;
+    }
+    *::-webkit-scrollbar-thumb:active {
+      background-color: var(--scroll-thumb-grab);
     }
   }
 
@@ -672,15 +674,14 @@ h1 {
   }
 }
 
+/* 玻璃/液态的底更花，静息条体加浓一点；悬停/拖拽档沿用 primary 基色（见 :root 令牌） */
 html[data-skin="glass"],
 html[data-skin="liquid"] {
-  --scroll-thumb: color-mix(in oklab, var(--foreground) 18%, transparent);
-  --scroll-thumb-active: color-mix(in oklab, var(--accent) 62%, transparent);
+  --scroll-thumb: color-mix(in oklab, var(--foreground) 24%, transparent);
 }
 html.dark[data-skin="glass"],
 html.dark[data-skin="liquid"] {
   --scroll-thumb: color-mix(in oklab, #ffffff 26%, transparent);
-  --scroll-thumb-active: color-mix(in oklab, var(--accent) 75%, transparent);
 }
 .list-scroll thead th {
   position: sticky;

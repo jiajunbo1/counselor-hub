@@ -13,12 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -347,15 +341,15 @@ export default function StudentsView({ store }: { store: Store }) {
         />
       ) : null}
 
-      <Sheet open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+      <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
           {detail ? (
             <>
-              <SheetHeader>
-                <SheetTitle>学生档案</SheetTitle>
-              </SheetHeader>
-              <div className="mt-3 flex gap-4">
-                <div className="flex w-[104px] shrink-0 flex-col items-center rounded-xl border bg-card p-2.5 shadow-xs">
+              <DialogHeader>
+                <DialogTitle>学生档案</DialogTitle>
+              </DialogHeader>
+              <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+                <div className="flex w-[104px] shrink-0 flex-col items-center self-center rounded-xl border bg-card p-2.5 shadow-xs sm:self-auto">
                   <PhotoAvatar
                     studentId={detail.id}
                     name={detail.name}
@@ -446,8 +440,8 @@ export default function StudentsView({ store }: { store: Store }) {
               )}
             </>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
